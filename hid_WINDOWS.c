@@ -51,6 +51,8 @@ static hid_t *last_hid = NULL;
 struct hid_struct {
 	HANDLE handle;
 	int open;
+	int rx_size;
+	int tx_size;
 	struct hid_struct *prev;
 	struct hid_struct *next;
 };
@@ -163,28 +165,20 @@ return_error:
 
 int rawhid_rxSize(int num)
 {
-#if 1
-	return 64;
-#else
 	hid_t *hid;
 
 	hid = get_hid(num);
 	if (!hid || !hid->open) return -1;
 	return hid->rx_size;
-#endif	
 }
 
 int rawhid_txSize(int num)
 {
-#if 1
-	return 64;
-#else
 	hid_t *hid;
 
 	hid = get_hid(num);
 	if (!hid || !hid->open) return -1;
 	return hid->tx_size;
-#endif
 }
 
 
@@ -271,6 +265,8 @@ int rawhid_open(int max, int vid, int pid, int usage_page, int usage)
 		}
 		hid->handle = h;
 		hid->open = 1;
+		hid->rx_size = capabilities.InputReportByteLength - 1;
+		hid->tx_size = capabilities.OutputReportByteLength - 1;
 		add_hid(hid);
 		count++;
 		if (count >= max) return count;
