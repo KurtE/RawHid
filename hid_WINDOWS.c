@@ -262,6 +262,7 @@ int rawhid_open(int max, int vid, int pid, int usage_page, int usage)
 			CloseHandle(h);
 			continue;
 		}
+		printf("$$$ Hid report sizes In:%u Out: %u\n", capabilities.InputReportByteLength, capabilities.OutputReportByteLength);
 		HidD_FreePreparsedData(hid_data);
 		hid = (struct hid_struct *)malloc(sizeof(struct hid_struct));
 		if (!hid) {
@@ -348,7 +349,7 @@ void print_win32_err(void)
 	DWORD err;
 
 	err = GetLastError();
-	FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, err,
+	FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, err,
 		0, buf, sizeof(buf)/2, NULL);
 	printf("err %ld: %s\n", err, buf);
 }
