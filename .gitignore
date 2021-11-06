@@ -1,0 +1,8 @@
+
+*.o
+rawhid_sendalot
+rawhid_sendalot.exe
+*.log
+*.ipch
+VS/RawHid/RawHid/Debug/*
+VS/RawHid/.vs/RawHid/v16/*
