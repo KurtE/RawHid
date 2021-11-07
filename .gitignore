@@ -6,3 +6,5 @@ rawhid_sendalot.exe
 *.ipch
 VS/RawHid/RawHid/Debug/*
 VS/RawHid/.vs/RawHid/v16/*
+*.pdb
+*.exe
