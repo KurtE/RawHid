@@ -11,7 +11,7 @@ USBHub hub2(myusb);
 USBHIDParser hid1(myusb);
 USBHIDParser hid2(myusb);
 
-DMAMEM uint8_t rawhid_big_buffer[2048] __attribute__ ((aligned(32)));
+DMAMEM uint8_t rawhid_big_buffer[8*512] __attribute__ ((aligned(32)));
 RawHIDController rawhid1(myusb, 0, rawhid_big_buffer, sizeof(rawhid_big_buffer));
 USBSerialEmu seremu(myusb);
 
@@ -29,6 +29,7 @@ bool hid_driver_active[CNT_DEVICES] = {false, false};
 #define FILE_SIZE 22400000ul
 int packet_size;
 int count_packets;
+bool show_prompt = true;
 
 int packet_num = -1; // say we are not active
 
@@ -41,7 +42,7 @@ void setup()
   if (CrashReport) {
     Serial.print(CrashReport);
   }
-  Serial.println("\n\nUSB Host Testing");
+  Serial.println("\n\nUSB Host RawHid and Seremu Testing");
   Serial.println(sizeof(USBHub), DEC);
 #if defined(USB_DUAL_SERIAL) || defined(USB_TRIPLE_SERIAL)
   SerialUSB1.begin(115200);
@@ -58,10 +59,15 @@ void setup()
 
 uint8_t buf[512];
 
+
 void loop()
 {
   myusb.Task();
   UpdateActiveDeviceInfo();
+  if (show_prompt && rawhid1) {
+    Serial.println("\n*** press any keyboard keys to start sending data ***");
+    show_prompt = false;
+  }
   if (Serial.available()) {
     while (Serial.read() != -1) ;
     if (rawhid1 && (packet_num == -1)) {
@@ -98,6 +104,7 @@ void loop()
       if (packet_num == count_packets) {
         Serial.println("\nDone...");
         packet_num = -1;
+        show_prompt = true;
       }
     }
   }
