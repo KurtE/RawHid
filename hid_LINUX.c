@@ -77,7 +77,7 @@
 
 
 
-#define printf(...)  // comment this out for lots of info
+//#define printf(...)  // comment this out for lots of info
 
 
 // a list of all opened HID devices, so the caller can
@@ -92,7 +92,9 @@ struct hid_struct {
 	int ep_in;
 	int ep_out;
 	int rx_size;
+	uint8_t rx_bmAttributes;
 	int tx_size;
+	uint8_t tx_bmAttributes;
 	struct hid_struct *prev;
 	struct hid_struct *next;
 };
@@ -144,7 +146,12 @@ int rawhid_send(int num, void *buf, int len, int timeout)
 	hid = get_hid(num);
 	if (!hid || !hid->open) return -1;
 	if (hid->ep_out) {
-		return usb_interrupt_write(hid->usb, hid->ep_out, buf, len, timeout);
+		if (hid->tx_bmAttributes == USB_ENDPOINT_TYPE_INTERRUPT) {  // Interrupt
+			return usb_interrupt_write(hid->usb, hid->ep_out, buf, len, timeout);
+		} else {
+			return usb_bulk_write(hid->usb, hid->ep_out, buf, len, timeout);			
+		}
+
 	} else {
 		return usb_control_msg(hid->usb, 0x21, 9, 0, hid->iface, buf, len, timeout);
 	}
@@ -168,6 +175,24 @@ int rawhid_txSize(int num)
 	return hid->tx_size;
 }
 
+int rawhid_rxAttr(int num)
+{
+	hid_t *hid;
+
+	hid = get_hid(num);
+	if (!hid || !hid->open) return -1;
+	return hid->rx_bmAttributes;
+}
+
+int rawhid_txAttr(int num)
+{
+	hid_t *hid;
+
+	hid = get_hid(num);
+	if (!hid || !hid->open) return -1;
+	return hid->tx_bmAttributes;
+}
+
 //  rawhid_open - open 1 or more devices
 //
 //    Inputs:
@@ -189,6 +214,7 @@ int rawhid_open(int max, int vid, int pid, int usage_page, int usage)
 	usb_dev_handle *u;
 	uint8_t buf[1024], *p;
 	int i, n, len, tag, ep_in, ep_out, count=0, claimed, rx_size, tx_size;
+	uint8_t rx_bmAttributes, tx_bmAttributes;
 	uint32_t val=0, parsed_usage, parsed_usage_page;
 	hid_t *hid;
 
@@ -222,19 +248,22 @@ int rawhid_open(int max, int vid, int pid, int usage_page, int usage)
 				ep = desc->endpoint;
 				ep_in = ep_out = 0;
 				rx_size = tx_size = -1;
+				rx_bmAttributes = tx_bmAttributes = 0;
 				for (n = 0; n < desc->bNumEndpoints; n++, ep++) {
 					if (ep->bEndpointAddress & 0x80) {
 						if (!ep_in) {
 							ep_in = ep->bEndpointAddress & 0x7F;
 							rx_size = ep->wMaxPacketSize;
+							rx_bmAttributes = ep->bmAttributes;
 						}
-						printf("    IN endpoint %d\n", ep_in);
+						printf("    IN endpoint %d max: %d attr: %u\n", ep_in, ep->wMaxPacketSize, ep->bmAttributes);
 					} else {
 						if (!ep_out) {
 							ep_out = ep->bEndpointAddress;
 							tx_size = ep->wMaxPacketSize;
+							tx_bmAttributes = ep->bmAttributes;
 						}
-						printf("    OUT endpoint %d max: %d\n", ep_out, ep->wMaxPacketSize);
+						printf("    OUT endpoint %d max: %d attr: %u\n", ep_out, ep->wMaxPacketSize,ep->bmAttributes);
 					}
 				}
 				if (!ep_in) continue;
@@ -288,7 +317,9 @@ int rawhid_open(int max, int vid, int pid, int usage_page, int usage)
 				hid->ep_out = ep_out;
 				hid->open = 1;
 				hid->rx_size = rx_size;
+				hid->rx_bmAttributes = rx_bmAttributes;
 				hid->tx_size = tx_size;
+				hid->tx_bmAttributes = tx_bmAttributes;
 				add_hid(hid);
 				claimed++;
 				count++;

@@ -14,15 +14,17 @@
 #include "hid.h"
 
 #define MAX_PACKET_SIZE 512
+#define BULK_PACKETS_PER_TRANSFER 32
 
 #define FILE_SIZE 22400000ul
 int packet_size;
+int tx_attr;
 uint32_t count_packets;
+char buf[MAX_PACKET_SIZE*BULK_PACKETS_PER_TRANSFER];
 
 int main()
 {
 	int r;
-	char buf[MAX_PACKET_SIZE];
 
 	// C-based example is 16C0:0480:FFAB:0200
 	r = rawhid_open(1, 0x16C0, 0x0480, 0xFFAB, 0x0200);
@@ -38,6 +40,7 @@ int main()
 
 	printf("Starting output(%u)\n", count_packets);
 	printf("Rx Size:%d Tx Size:%d\n", rawhid_rxSize(0), rawhid_txSize(0));
+	tx_attr = rawhid_txAttr(0);
 	packet_size = rawhid_txSize(0);
 	if (packet_size <= 0) {
 		printf("invalid size field");
@@ -45,15 +48,34 @@ int main()
 	}
 	count_packets = FILE_SIZE / packet_size;
 
-	for (uint32_t packet_num = 0; packet_num < count_packets; packet_num++){
-		memset(buf, 'A' + (packet_num & 0xf), packet_size) ;
-		sprintf_s(buf, sizeof(buf),"%07u", packet_num);
-		buf[7] = (packet_num == (count_packets-1))? '$' : ' ';
-		buf[packet_size-1] = '\n';
-		rawhid_send(0, buf, packet_size, 100);
-		if ((packet_num & 0x1ff) == 0) printf(".");
-		if ((packet_num & 0xffff) == 0) printf("\n");
+	if (tx_attr == 2) {
+		for (uint32_t bulk_pn_start = 0; bulk_pn_start < count_packets; bulk_pn_start+=BULK_PACKETS_PER_TRANSFER){
+			char *pb = buf;
+			for (uint32_t i=0; i <  BULK_PACKETS_PER_TRANSFER; i++) {
+				uint32_t packet_num = bulk_pn_start + i;
+				memset(pb, 'A' + (packet_num & 0xf), packet_size) ;
+				snprintf(pb, sizeof(buf),"%07u", packet_num);
+				pb[7] = (packet_num == (count_packets-1))? '$' : ' ';
+				pb[packet_size-1] = '\n';
+				pb += packet_size;
+			}
+			rawhid_send(0, buf, packet_size*BULK_PACKETS_PER_TRANSFER, 100*BULK_PACKETS_PER_TRANSFER);
+			if ((bulk_pn_start & 0x1ff) == 0) printf(".");
+			if ((bulk_pn_start & 0xffff) == 0) printf("\n");
+		}
+
+	} else {
+		for (uint32_t packet_num = 0; packet_num < count_packets; packet_num++){
+			memset(buf, 'A' + (packet_num & 0xf), packet_size) ;
+			snprintf(buf, sizeof(buf),"%07u", packet_num);
+			buf[7] = (packet_num == (count_packets-1))? '$' : ' ';
+			buf[packet_size-1] = '\n';
+			rawhid_send(0, buf, packet_size, 100);
+			if ((packet_num & 0x1ff) == 0) printf(".");
+			if ((packet_num & 0xffff) == 0) printf("\n");
+		}
 	}
+
 	printf("\nDone...\n");
 	return 0;
 }
