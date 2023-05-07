@@ -341,7 +341,10 @@ bool send_rawhid_packet(int cmd, void *packet_data, uint8_t data_size, uint32_t 
   elapsedMillis emTimeout = 0;
   for (;;) {
     if (rawhid1.sendPacket(buffer)) return true;
-    if (emTimeout > timeout) return false;
+    if (emTimeout > timeout) {
+      DBGPrintf("\t *** Timeout(%u) ***\n", (uint32_t)emTimeout);
+      return false;
+    }
   }
 }
 
@@ -550,39 +553,26 @@ void download(uint8_t * filename) {
 // upload a file code. 
 //=============================================================================
 bool onReceiveUpload(uint32_t usage, const uint8_t *data, uint32_t len) {
-  DBGPrintf("onReceiveUpload(%x %p %u)\n", usage, data, len);
+  DBGPrintf("ORUp(%x %p %u)", usage, data, len);
 
   // lets check the data 
   RawHID_packet_t *packet = (RawHID_packet_t*)data;
-  uint8_t cb_data = packet->size;
 
   // Quick check to see if an error happened. 
   if (packet->type == CMD_RESPONSE) {
     RawHID_status_packet_data_t *status_data = (RawHID_status_packet_data_t*)packet->data;
     g_transfer_status = status_data->status;
-    g_transfer_size = status_data->size;
+    //g_transfer_size = status_data->size;
+    DBGPrintf(" - RSP: %u\n", g_transfer_status);
     return true;
-  }
-
-  uint32_t buffer_free;
-  uint32_t head = g_transfer_buffer_head;
-	if (head >= g_transfer_buffer_tail) buffer_free =  sizeof(g_transfer_buffer) - (head - g_transfer_buffer_tail);
-	else buffer_free =  head - g_transfer_buffer_tail;
-
-	if (++head >= sizeof(g_transfer_buffer)) head = 0;
-  if (buffer_free > cb_data) buffer_free = cb_data;
-  memcpy(g_transfer_buffer + head, packet->data, buffer_free);
-  if (cb_data <= buffer_free) {
-    head += buffer_free - 1;
-    if (head >= sizeof(g_transfer_buffer)) head = 0;
+  } else if (packet->type == CMD_PROGRESS) {
+      RawHID_progress_packet_data_t *progress_data = (RawHID_progress_packet_data_t*)packet->data;
+      if (progress_data->count <= g_cb_file_buffer_used) g_cb_file_buffer_used -= progress_data->count;
+      else g_cb_file_buffer_used = 0;
+      DBGPrintf(" - PROG: %u %u\n", progress_data->count, g_cb_file_buffer_used);
   } else {
-    head = cb_data - buffer_free - 1;
-    memcpy(g_transfer_buffer, packet->data + sizeof(g_transfer_buffer), head + 1);
+    DBGPrintf("\n");
   }
-  g_transfer_buffer_head = head;
-  g_cb_file_buffer_used += packet->size;
-  if (packet->size < (rx_size - sizeof(RawHID_packet_header_t))) g_transfer_complete = true;
-
   return true;
 }
 
