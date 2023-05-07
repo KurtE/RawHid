@@ -9,3 +9,5 @@ VS/RawHid/.vs/RawHid/v16/*
 *.pdb
 *.exe
 *.cmd
+**/Release/*
+**/Debug/*
