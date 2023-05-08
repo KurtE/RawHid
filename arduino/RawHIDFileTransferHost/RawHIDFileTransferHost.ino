@@ -54,7 +54,8 @@ USBHub hub2(myusb);
 USBHIDParser hid1(myusb);
 USBHIDParser hid2(myusb);
 
-RawHIDController rawhid1(myusb);
+DMAMEM uint8_t rawhid_big_buffer[8*512] __attribute__ ((aligned(32)));
+RawHIDController rawhid1(myusb, 0, rawhid_big_buffer, sizeof(rawhid_big_buffer));
 USBSerialEmu seremu(myusb);
 
 DMAMEM uint8_t buffer[512];  // most of the time will be 64 bytes, but if we support 512...
@@ -626,9 +627,12 @@ void upload(uint8_t * filename) {
   uint16_t buffer_index = 0;
   uint16_t cb_transfer = rx_size - sizeof(RawHID_packet_header_t);
   bool eof = cb_read == 0;
+
+  uint32_t send_packet_num = 0;
   
   while(!eof && cb_transfer) {
     //todo: don't hard code buffer sizes...
+    myusb.Task();
     if (!eof && (cb_buffer < cb_transfer)) {
       memmove(g_transfer_buffer, &g_transfer_buffer[buffer_index], cb_buffer);
       buffer_index = 0;
@@ -640,16 +644,23 @@ void upload(uint8_t * filename) {
 
     // don't output more than other side can handle
     while (g_cb_file_buffer_used > (sizeof(g_transfer_buffer) - cb_transfer)) {
+      myusb.Task();
       mtp_loop; // should put in timeout. 
     }
     if (cb_transfer > cb_buffer) cb_transfer = cb_buffer;
     send_rawhid_packet(CMD_DATA, &g_transfer_buffer[buffer_index],cb_transfer, 5000);
+    delay(1);
 
     __disable_irq();
     g_cb_file_buffer_used += cb_transfer;
     __enable_irq();
     cb_buffer -= cb_transfer;
     buffer_index += cb_transfer;
+
+    // bugbug: see if I put in a delay every so often if that will hep or not.
+    send_packet_num++;
+    if ((send_packet_num & 0xf) == 0) delay(10);
+
   }
   if (cb_transfer != (rx_size - sizeof(RawHID_packet_header_t))) {
     // send a zero length to let them know we are done
