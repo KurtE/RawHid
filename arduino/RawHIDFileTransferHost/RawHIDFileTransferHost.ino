@@ -208,6 +208,7 @@ void loop() {
       case CMD_LOCAL_CD: local_cd(filename); break;
       case CMD_RESET: remote_reset(); break;
     }    
+    rawhid1.attachReceive(OnReceiveHIDData);
   }
 
   // check if any data has arrived on the USBHost serial port
