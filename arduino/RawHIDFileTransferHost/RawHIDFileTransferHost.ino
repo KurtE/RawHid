@@ -690,6 +690,7 @@ void print_local_dir(uint8_t * filename) {
     current_directory = fs.open("/");
   }
   Serial.println("Local File system directory");
+  current_directory.rewindDirectory();
   printDirectory(current_directory, 0);
 }
 
