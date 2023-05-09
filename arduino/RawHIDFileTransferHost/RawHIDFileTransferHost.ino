@@ -615,9 +615,11 @@ void upload(uint8_t * filename) {
 
   // Send them a status packet that has size and modify time
   uint32_t file_size = g_transfer_file.size();
+  uint32_t count_bytes_sent = 0;
   DateTimeFields dtf;
   g_transfer_file.getModifyTime(dtf);
-
+  DBGPrintf("File Size:%u Modify: %02u/%02u/%04u %02u:%02u\n", file_size, 
+    dtf.mon + 1, dtf.mday, dtf.year + 1900, dtf.hour, dtf.min );
   send_status_packet(0, file_size, makeTime(dtf));  // send a failure code
 
 
@@ -648,7 +650,14 @@ void upload(uint8_t * filename) {
       mtp_loop; // should put in timeout. 
     }
     if (cb_transfer > cb_buffer) cb_transfer = cb_buffer;
-    send_rawhid_packet(CMD_DATA, &g_transfer_buffer[buffer_index],cb_transfer, 5000);
+    count_bytes_sent += cb_transfer;
+    DBGPrintf("<%u>", count_bytes_sent);
+    
+    if (!send_rawhid_packet(CMD_DATA, &g_transfer_buffer[buffer_index],cb_transfer, 5000)) {
+      Serial.println("\n*** Upload Failed - Timeout ***\n");
+      g_transfer_file.close();  
+      return;
+    }
     delay(1);
 
     __disable_irq();

@@ -30,18 +30,13 @@
 
 // uncomment this one if you wish to output debug to something other than Serial.
 #define DEBUG_PORT Serial1
-#define DEBUG_BAUD 115200
+#define DEBUG_BAUD 230400
 
 uint16_t rx_size = 64;  // later will change ... hopefully
 byte buffer[512];
 byte rxBuffer[512];
+DMAMEM byte debug_tx_buffer[4096];
 
-
-#define FILE_IO_SIZE 4096
-#define FILE_BUFFER_SIZE (FILE_IO_SIZE * 8)
-uint8_t g_transfer_buffer[FILE_BUFFER_SIZE];
-uint16_t g_transfer_buffer_head = 0;
-uint16_t g_transfer_buffer_tail = 0;
 
 typedef struct {
   uint16_t type;       // type of data in buffer
@@ -63,6 +58,23 @@ typedef struct {
 typedef struct {
   uint32_t count;    // progress information
 } RawHID_progress_packet_data_t;
+
+
+//=============================================================================
+// Globals used in transfers and the like. 
+//=============================================================================
+#define FILE_IO_SIZE 4096
+#define FILE_BUFFER_SIZE (FILE_IO_SIZE * 8)
+uint8_t g_transfer_buffer[FILE_BUFFER_SIZE];
+uint16_t g_transfer_buffer_head = 0;
+uint16_t g_transfer_buffer_tail = 0;
+
+File g_transfer_file;
+volatile bool     g_transfer_complete = false;
+volatile uint16_t g_cb_file_buffer_used = 0;
+volatile uint8_t  g_transfer_status = 0;
+uint32_t          g_transfer_size = 0;
+uint32_t          g_transfer_modify_date_time = 0;
 
 
 //=============================================================================
@@ -112,6 +124,7 @@ void setup() {
   while (!Serial && millis() < 5000) ; //wait up to 5 seconds
 #if defined(DEBUG_OUTPUT) && defined (DEBUG_PORT)
   DEBUG_PORT.begin(DEBUG_BAUD);
+  DEBUG_PORT.addMemoryForWrite(debug_tx_buffer, sizeof(debug_tx_buffer));
   DEBUG_PORT.println("RawHIDFileTransferRemote stated - debug port");
 #endif    
 #ifdef SD_CS_PIN
@@ -137,6 +150,7 @@ void setup() {
   pinMode(3, OUTPUT);
   pinMode(4, OUTPUT);
   pinMode(LED_BUILTIN, OUTPUT);
+  digitalWriteFast(LED_BUILTIN, LOW);
 }
 
 //=============================================================================
@@ -144,30 +158,35 @@ void setup() {
 //=============================================================================
 void loop() {
   int n;
-  digitalWriteFast(LED_BUILTIN, HIGH);
+  int cmd_status = 0;
   n = RawHID.recv(rxBuffer, 0); // 0 timeout = do not wait
   if (n > 0) {
+    digitalWriteFast(LED_BUILTIN, HIGH);
     RawHID_packet_t *packet = (RawHID_packet_t*)rxBuffer;
     // Lets see if this is a top level command.
-    DBGPrintf("RLOOP CMD:%d %u\n", packet->type, packet->size);
-    switch (packet->type) {
-      case CMD_DIR: 
-        print_dir((char*)packet->data);
-        break;
-      case CMD_CD: 
-        // todo:
-        send_status_packet(2, 0);
-        break;
-      case CMD_DOWNLOAD:
-        sendFile((char*)packet->data);
-        break;  
-      case CMD_UPLOAD:
-        receiveFile((char*)packet->data);
-        break;  
-      case CMD_RESET:
-        _reboot_Teensyduino_();
-        break;  
-    }
+    // hack if one of the commands fails and receives a new command
+    // request try to process it.
+    do {
+      DBGPrintf("RLOOP CMD:%d %u\n", packet->type, packet->size);
+      switch (packet->type) {
+        case CMD_DIR: 
+          print_dir((char*)packet->data);
+          break;
+        case CMD_CD: 
+          // todo:
+          send_status_packet(2, 0);
+          break;
+        case CMD_DOWNLOAD:
+          sendFile((char*)packet->data);
+          break;  
+        case CMD_UPLOAD:
+          cmd_status = receiveFile((char*)packet->data);
+          break;  
+        case CMD_RESET:
+          _reboot_Teensyduino_();
+          break;  
+      }
+    } while (cmd_status == 1);
   }
   digitalWriteFast(LED_BUILTIN, LOW);
 }
@@ -185,7 +204,10 @@ int send_rawhid_packet(int cmd, void *packet_data, uint8_t data_size, uint32_t t
   #ifdef DEBUG_OUTPUT
   //MemoryHexDump(Serial, buffer, 64, false, "RMT:\n");
   #endif
-  return RawHID.send(buffer, timeout);
+  elapsedMillis emSend = 0;
+  int return_result = RawHID.send(buffer, timeout);
+  if (return_result <= 0) DBGPrintf("\tRawHID.send Failed: %d %u\n", return_result, (uint32_t)emSend);
+  return return_result;
 }
 
 int send_status_packet(int32_t status, uint32_t size, uint32_t modifyDateTime, uint32_t timeout) {
@@ -197,14 +219,9 @@ int send_status_packet(int32_t status, uint32_t size, uint32_t modifyDateTime, u
 //=============================================================================
 //  Recove a file code. 
 //=============================================================================
-File g_transfer_file;
-volatile bool g_transfer_complete = false;
-volatile uint16_t g_cb_file_buffer_used = 0;
-volatile uint8_t g_transfer_status = 0;
-uint32_t          g_transfer_size = 0;
-uint32_t          g_transfer_modify_date_time = 0;
 
-bool checkForRawHIDReceive_ReceiveFile() {
+int checkForRawHIDReceive_ReceiveFile() {
+  int return_value = 0;  // 0 - no data;
   // see if we have any messages pending for us.
   digitalWriteFast(4, HIGH);
   int n = RawHID.recv(rxBuffer, 0); // 0 timeout = do not wait
@@ -216,47 +233,55 @@ bool checkForRawHIDReceive_ReceiveFile() {
 
     // lets check the data 
     uint8_t cb_data = packet->size;
-
+    switch (packet->type) {
     // Quick check to see if an error happened. 
-    if (packet->type == CMD_RESPONSE) {
-      RawHID_status_packet_data_t *status_data = (RawHID_status_packet_data_t*)packet->data;
-      DBGPrintf("ORRF - Status: %d %d\n", status_data->status, status_data->size);
-      g_transfer_status = status_data->status;
-      g_transfer_size = status_data->size;
-      g_transfer_modify_date_time = status_data->modifyDateTime;
-    }
-    else if (packet->type == CMD_DATA) {
-      //DBGPrintf(" - Data cb:%u", cb_data);
-      // we have limits on packets going back and forth to make sure we don't run out of room. 
-      // so going to write this to be quick and dirty.
-      // how much can 
-      uint32_t head = g_transfer_buffer_head;
-      uint32_t cb = cb_data;
-      if (cb > (sizeof(g_transfer_buffer) - head)) cb = sizeof(g_transfer_buffer) - head;
-      memcpy(g_transfer_buffer + head, packet->data, cb);
-      head += cb;
-      if (head >= sizeof(g_transfer_buffer)) head = 0;
-      cb_data -= cb;
-      if (cb_data) {
-        memcpy(g_transfer_buffer, packet->data + cb, cb_data);
-        head += cb_data;
-      }
-      g_transfer_buffer_head = head;
-      g_cb_file_buffer_used += packet->size;
-      DBGPrintf("ORRF DATA : %u\n", g_cb_file_buffer_used);
-      if (packet->size < (rx_size - sizeof(RawHID_packet_header_t))) g_transfer_complete = true;
-    } else {
-      DBGPrintf("ORRF ???\n");
+      case CMD_RESPONSE: 
+        {
+          RawHID_status_packet_data_t *status_data = (RawHID_status_packet_data_t*)packet->data;
+          DBGPrintf("ORRF - Status: %d %d\n", status_data->status, status_data->size);
+          g_transfer_status = status_data->status;
+          g_transfer_size = status_data->size;
+          g_transfer_modify_date_time = status_data->modifyDateTime;
+          return_value = 1;
+        }
+        break;
+      case CMD_DATA:
+        {
+          //DBGPrintf(" - Data cb:%u", cb_data);
+          // we have limits on packets going back and forth to make sure we don't run out of room. 
+          // so going to write this to be quick and dirty.
+          // how much can 
+          uint32_t head = g_transfer_buffer_head;
+          uint32_t cb = cb_data;
+          if (cb > (sizeof(g_transfer_buffer) - head)) cb = sizeof(g_transfer_buffer) - head;
+          memcpy(g_transfer_buffer + head, packet->data, cb);
+          head += cb;
+          if (head >= sizeof(g_transfer_buffer)) head = 0;
+          cb_data -= cb;
+          if (cb_data) {
+            memcpy(g_transfer_buffer, packet->data + cb, cb_data);
+            head += cb_data;
+          }
+          g_transfer_buffer_head = head;
+          g_cb_file_buffer_used += packet->size;
+          DBGPrintf("ORRF DATA : %u\n", g_cb_file_buffer_used);
+          if (packet->size < (rx_size - sizeof(RawHID_packet_header_t))) g_transfer_complete = true;
+          return_value = 1;
+        }
+        break;
+      default:
+        return_value = 2;  // Wrong type message maybe new command
+        DBGPrintf("ORRF ???\n");
     }
   }
   digitalWriteFast(4, LOW);
-  return n > 0;
+  return return_value;
 }
 
 //-----------------------------------------------------------------------------
 // receive file
 //-----------------------------------------------------------------------------
-void receiveFile(char * filename) {
+int receiveFile(char * filename) {
   // todo: right now file names can not be longer than our packets
   // clear out the buffer
   Serial.printf("Receive File %s\n", filename);
@@ -266,6 +291,7 @@ void receiveFile(char * filename) {
   g_cb_file_buffer_used = 0;  // could compute.
   g_transfer_status = -1;   // status of the operation 0 is OK 
   g_transfer_complete = false;
+  int last_check_rawhid_receive_status = 0;
   uint32_t total_bytes_transfered = 0;
 
   // need to add some error checking. 
@@ -283,14 +309,22 @@ void receiveFile(char * filename) {
   RawHID_progress_packet_data_t progress_data = {FILE_IO_SIZE};
   DBGPrintf("\n#################### Enter Download main Loop ##########################\n");
   do { 
-    checkForRawHIDReceive_ReceiveFile();
+    last_check_rawhid_receive_status = checkForRawHIDReceive_ReceiveFile();
+    if (last_check_rawhid_receive_status >= 2) goto abort_receive_file; // this is c...p but...
     DBGPrintf("\n>>>>>> Enter data loop (%u %u %d) <<<<<<<<\n", 
           g_cb_file_buffer_used, g_transfer_complete, g_transfer_status);
     digitalWriteFast(3, HIGH);
+    elapsedMillis emRead = 0;
     while ((g_cb_file_buffer_used < FILE_IO_SIZE) && !g_transfer_complete) {
-      // if we have mtp... do it now
-      checkForRawHIDReceive_ReceiveFile();
+      last_check_rawhid_receive_status = checkForRawHIDReceive_ReceiveFile();
+      if (last_check_rawhid_receive_status >= 2) goto abort_receive_file; // this is c...p but...
       yield();
+      if (emRead > 5000) {
+        // timeout...
+        DBGPrintf("\tTimout data loop\n");
+        last_check_rawhid_receive_status = 3; // hack for timeout
+        goto abort_receive_file;
+      }
     }
     digitalWriteFast(3, LOW);
     DBGPrintf("\n>>>>>> Exit data loop (%u %u %d) <<<<<<<<\n", 
@@ -303,7 +337,8 @@ void receiveFile(char * filename) {
 
     // maybe read in any pending messages
     uint8_t loop_count = 0xff;
-    while (loop_count && checkForRawHIDReceive_ReceiveFile()) loop_count--;
+    while (loop_count && ((last_check_rawhid_receive_status = checkForRawHIDReceive_ReceiveFile()) == 1)) loop_count--;
+    if (last_check_rawhid_receive_status >= 2) goto abort_receive_file; // this is c...p but...
 
     if (cbWritten != progress_data.count) {
       Serial.printf("\n$$Receive error: only wrote %d bytes expected %d - retry\n", cbWritten,  progress_data.count);
@@ -314,8 +349,8 @@ void receiveFile(char * filename) {
         Serial.printf("\t$$Retry failed: only wrote %d bytes expected %d\n", cbWritten,  progress_data.count);
       }
       loop_count = 255;
-      while (loop_count && checkForRawHIDReceive_ReceiveFile()) loop_count--;
-
+      while (loop_count && ((last_check_rawhid_receive_status = checkForRawHIDReceive_ReceiveFile()) == 1)) loop_count--;
+      if (last_check_rawhid_receive_status >= 2) goto abort_receive_file; // this is c...p but...
     }
 
     g_transfer_buffer_tail += progress_data.count;
@@ -336,19 +371,23 @@ void receiveFile(char * filename) {
     DBGPrintf("After CMD_PROGRESS\n");
 
   } while (!g_transfer_complete);
-  DBGPrintf("\n#################### Exit Download main Loop ##########################\n");
+  DBGPrintf("\n#################### Exit Download main Loop(%u) ##########################\n", g_cb_file_buffer_used);
 
   // At end we may have a partial buffer to write.
   if (g_cb_file_buffer_used) {
     uint32_t cbWrite = g_cb_file_buffer_used;
     if ((g_transfer_buffer_tail + cbWrite) > sizeof(g_transfer_buffer)) 
       cbWrite = sizeof(g_transfer_buffer) - g_transfer_buffer_tail;
-    g_transfer_file.write(&g_transfer_buffer[g_transfer_buffer_tail], cbWrite );
+    elapsedMillis emWrite;
+    uint32_t cbWritten = g_transfer_file.write(&g_transfer_buffer[g_transfer_buffer_tail], cbWrite );
+    DBGPrintf("Receive file write end 1: %u %u dt:%u\n", cbWritten,  cbWrite, (uint32_t)emWrite);
     progress_data.count = cbWrite;
     g_cb_file_buffer_used -= cbWrite;
     if (g_cb_file_buffer_used) {
       // Wrapped around to start of buffer
+      emWrite = 0;
       g_transfer_file.write(&g_transfer_buffer, g_cb_file_buffer_used );
+      DBGPrintf("Receive file write end 2: %u %u dt:%u\n", g_cb_file_buffer_used,  cbWrite, (uint32_t)emWrite);
       progress_data.count = g_cb_file_buffer_used;
     }
     send_rawhid_packet(CMD_PROGRESS, (uint8_t*)&progress_data, sizeof(progress_data), 1000);
@@ -356,10 +395,15 @@ void receiveFile(char * filename) {
     Serial.write('.');
     DBGPrintf("(%u)\n", total_bytes_transfered);
   }
+abort_receive_file:
+  if (last_check_rawhid_receive_status >= 2) {
+    DBGPrintf("Receive file aborted: %d\n", last_check_rawhid_receive_status);
+    Serial.printf("Receive file aborted: %d\n", last_check_rawhid_receive_status);
+  }
   g_transfer_file.close();
   Serial.println("\nremote Completed");
   digitalWriteFast(2, LOW);
-
+  return last_check_rawhid_receive_status;
 }
 
 
@@ -478,15 +522,21 @@ void sendFile(char * filename) {
 // Print the local directory 
 //=============================================================================
 bool print_dir(char * filename) {
+  DBGPrintf("print_dir called\n");
   if (!current_directory) {
     current_directory = fs.open("/");
   }
+  current_directory.rewindDirectory();
   Serial.println("Remote File system directory");
   if (!current_directory) {
+    DBGPrintf("Failed to open root directory\n");
     send_status_packet(1, 0);
     return false;
   }
+
   printDirectory(current_directory, 0);
+
+  // BUGBUG: Try closeing the directory for now to see if that help later
   send_status_packet(0, 0);
 
   return true;
