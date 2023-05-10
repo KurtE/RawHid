@@ -143,7 +143,11 @@ void setup() {
   }
  #endif
 
+#ifdef USB_RAWHID512
+rx_size = RawHID.rxSize();
+#endif
   Serial.printf("\n\nUSB Host RawHid File Transfers Remote(slave) side\n");
+  Serial.printf("Transfer size: %u\n", rx_size);
 
   // debug pins
   pinMode(2, OUTPUT);
@@ -194,7 +198,7 @@ void loop() {
 //=============================================================================
 // Send a packet
 //=============================================================================
-int send_rawhid_packet(int cmd, void *packet_data, uint8_t data_size, uint32_t timeout=1000) {
+int send_rawhid_packet(int cmd, void *packet_data, uint16_t data_size, uint32_t timeout=1000) {
   DBGPrintf("RSHID CMD:%d %p %u %u\n", cmd, packet_data, data_size, timeout);
   memset(buffer, 0, rx_size);
   RawHID_packet_t *packet = (RawHID_packet_t*)buffer;
@@ -232,7 +236,7 @@ int checkForRawHIDReceive_ReceiveFile() {
     //DBGPrintf("CRHReceive type:%d %u ", packet->type, packet->size);
 
     // lets check the data 
-    uint8_t cb_data = packet->size;
+    uint16_t cb_data = packet->size;
     switch (packet->type) {
     // Quick check to see if an error happened. 
       case CMD_RESPONSE: 
@@ -336,7 +340,7 @@ int receiveFile(char * filename) {
     DBGPrintf("Receive file write: %u %u dt:%u\n", cbWritten,  progress_data.count, (uint32_t)emWrite);
 
     // maybe read in any pending messages
-    uint8_t loop_count = 0xff;
+    uint16_t loop_count = 0xff;
     while (loop_count && ((last_check_rawhid_receive_status = checkForRawHIDReceive_ReceiveFile()) == 1)) loop_count--;
     if (last_check_rawhid_receive_status >= 2) goto abort_receive_file; // this is c...p but...
 
