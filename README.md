@@ -16,14 +16,17 @@ I hacked up a boards.local.txt, that allows a 512...
 ```
 teensy41.menu.usb.rawhid512=Raw HID 512
 teensy41.menu.usb.rawhid512.build.usbtype=USB_RAWHID512
+teensy41.menu.usb.rawhid.upload_port.usbtype=USB_RAWHID
 teensy41.menu.usb.rawhid512.fake_serial=teensy_gateway
 
 teensyMM.menu.usb.rawhid512=Raw HID 512
 teensyMM.menu.usb.rawhid512.build.usbtype=USB_RAWHID512
+teensyMM.menu.usb.rawhid.upload_port.usbtype=USB_RAWHID
 teensyMM.menu.usb.rawhid512.fake_serial=teensy_gateway
 
 teensy40.menu.usb.rawhid512=Raw HID 512
 teensy40.menu.usb.rawhid512.build.usbtype=USB_RAWHID512
+teensy40.menu.usb.rawhid.upload_port.usbtype=USB_RAWHID
 teensy40.menu.usb.rawhid512.fake_serial=teensy_gateway
 ```
 So far my testing for 512 bytes has been done on linux... 
