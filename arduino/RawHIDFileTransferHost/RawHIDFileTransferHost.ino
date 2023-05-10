@@ -481,7 +481,7 @@ void download(uint8_t *filename) {
               g_cb_file_buffer_used, g_transfer_complete, g_transfer_status);
     while ((g_cb_file_buffer_used < FILE_IO_SIZE) && !g_transfer_complete && (g_transfer_status == 0)) {
       // if we have mtp... do it now
-      mtp_loop;
+      //mtp_loop;
       forward_remote_serial();
       yield();
       if (em > 5000) {
