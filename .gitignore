@@ -11,3 +11,5 @@ VS/RawHid/.vs/RawHid/v16/*
 *.cmd
 **/Release/*
 **/Debug/*
+**/FileContentIndex/*
+**/v17/*

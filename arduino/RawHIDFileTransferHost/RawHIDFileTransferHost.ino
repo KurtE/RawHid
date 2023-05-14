@@ -88,6 +88,14 @@ typedef struct {
   uint32_t count;  // progress information
 } RawHID_progress_packet_data_t;
 
+typedef struct __attribute__((packed)) {
+  unit32_t        size;
+  DateTimeFields  dtfCreate;
+  DateTimeFields  dtfModify;
+  uint8_t         isDirectory;
+  char            name[1];
+} RawHID_file_info_t;
+
 //=============================================================================
 // File system objects.
 //=============================================================================
