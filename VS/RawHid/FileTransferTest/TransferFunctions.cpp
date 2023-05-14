@@ -250,9 +250,6 @@ void upload(std::vector<std::string> cmd_line_parts) {
 
 
 //-----------------------------------------------------------------------------
-// Download file
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
 // download
 //-----------------------------------------------------------------------------
 void download(std::vector<std::string> cmd_line_parts) {
@@ -348,6 +345,10 @@ void download(std::vector<std::string> cmd_line_parts) {
 	printf("\nCompleted, total byte: %u elapsed millis: %u\n", total_bytes_transfered, GetTickCount() - start_time);
 }
 
+void resetRAWHID() {
+	printf("Send remote reset command\n");
+	send_rawhid_packet(CMD_RESET, nullptr, 0, 5000);
+}
 
 //-----------------------------------------------------------------------------
 // Remote directory

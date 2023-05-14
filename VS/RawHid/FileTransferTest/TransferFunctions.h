@@ -90,5 +90,6 @@ extern void change_directory(std::vector<std::string> cmd_line_parts);
 extern void upload(std::vector<std::string> cmd_line_parts);
 extern void download(std::vector<std::string> cmd_line_parts);
 extern void breakTime(uint32_t time, DateTimeFields& tm);
+extern void resetRAWHID();
 
 
