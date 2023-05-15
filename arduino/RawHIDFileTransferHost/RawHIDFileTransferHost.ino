@@ -89,7 +89,7 @@ typedef struct {
 } RawHID_progress_packet_data_t;
 
 typedef struct __attribute__((packed)) {
-  unit32_t        size;
+  uint32_t        size;
   DateTimeFields  dtfCreate;
   DateTimeFields  dtfModify;
   uint8_t         isDirectory;
@@ -121,7 +121,12 @@ enum { CMD_NONE = -1,
        CMD_LOCAL_CD,
        CMD_RESPONSE,
        CMD_PROGRESS,
-       CMD_RESET };
+       CMD_RESET,
+       CMD_FILELIST,
+       CMD_FILEINFO,
+       CMD_MKDIR
+};
+
 
 //=============================================================================
 // optional debug stuff

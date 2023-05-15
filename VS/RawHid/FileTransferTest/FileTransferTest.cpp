@@ -162,7 +162,7 @@ void loop() {
 
     // signal the other thread to exit.
     g_clear_rawhid_messages = false;
-    WaitForSingleObject(thread_handle, 250);
+    if (thread_handle)WaitForSingleObject(thread_handle, 250);
 
     for (auto i : cmd_line_parts) cout << i << endl;
 
@@ -178,6 +178,14 @@ void loop() {
     else if ((cmd_line_parts[0] == "cd") || (cmd_line_parts[0] == "c")) {
         change_directory(cmd_line_parts);
     }
+    else if ((cmd_line_parts[0] == "mkdir") || (cmd_line_parts[0] == "m")) {
+        create_directory(cmd_line_parts);
+    }
+
+    else if ((cmd_line_parts[0] == "quit") || (cmd_line_parts[0] == "exit")) {
+        exit(0);
+    }
+
     else if (cmd_line_parts[0] == "reset") {
         resetRAWHID();
     }
@@ -197,6 +205,7 @@ void loop() {
         rawhid_rx_tx_size = rawhid_txSize(0);
         printf("packet size:%u\n", rawhid_rx_tx_size);
     }
+
     else {
         show_command_help();
     }
@@ -209,12 +218,14 @@ void show_command_help() {
     printf("Command list\n");
     printf("\tdir(or ls) [optional pattern] - show directory files on remote FS\n");
     printf("\tcd <file pattern> - Change directory on remote FS\n");
+    printf("\tmkdir <name> - Create a directory on remote FS\n");
     printf("\tdownload(or d) <remote file> <localfile spec> - download(Receive) file from From remote\n");
     printf("\tupload(or u) <local file spec> [remote file spec] - Upload file to remote\n");
     //printf("\tld [optional pattern] - show directory files on Local FS\n");
     //printf("\tlc <file pattern> - Change directory on local FS\n");
     printf("\treset - reboots the remote teensy\n");
     printf("\tscan - run the rawhid scan again\n");
+    printf("\texit - end the program\n");
 }
 
 

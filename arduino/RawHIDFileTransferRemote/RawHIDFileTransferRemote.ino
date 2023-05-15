@@ -111,7 +111,9 @@ enum { CMD_NONE = -1,
        CMD_PROGRESS,
        CMD_RESET,
        CMD_FILELIST,
-       CMD_FILEINFO };
+       CMD_FILEINFO,
+       CMD_MKDIR
+};
 
 //=============================================================================
 // optional debug stuff
@@ -199,10 +201,13 @@ void loop() {
           break;
           break;
         case CMD_FILELIST:
-          listFiles((char*)packet->data);
+          listFiles((char *)packet->data);
         case CMD_CD:
           // todo:
           changeDirectory((char *)packet->data);
+          break;
+        case CMD_MKDIR:
+          createDirectory((char *)packet->data);
           break;
         case CMD_DOWNLOAD:
           sendFile((char *)packet->data);
@@ -230,7 +235,7 @@ int send_rawhid_packet(int cmd, void *packet_data, uint16_t data_size, uint32_t 
   packet->size = data_size;
   if (packet_data) memcpy(packet->data, packet_data, data_size);
 #ifdef DEBUG_OUTPUT
-MemoryHexDump(DEBUG_PORT, buffer, 64, false, "RMT:\n");
+  MemoryHexDump(DEBUG_PORT, buffer, 64, false, "RMT:\n");
 #endif
   elapsedMillis emSend = 0;
   int return_result = RawHID.send(buffer, timeout);
@@ -330,7 +335,7 @@ int receiveFile(char *filename) {
   }
 
   // let the other side know we opened file and tell them our buffer size.
-  send_status_packet(0, sizeof(g_transfer_buffer)); 
+  send_status_packet(0, sizeof(g_transfer_buffer));
 
   // we opened the file lets truncate it now
   g_transfer_file.truncate();
@@ -558,12 +563,12 @@ bool listFiles(char *filename) {
   if (!rootFile) return false;
   rootFile.rewindDirectory();
   uint8_t file_info_buffer[rx_size];
-  RawHid_file_info_t *file_info = (RawHid_file_info_t*)file_info_buffer;
+  RawHid_file_info_t *file_info = (RawHid_file_info_t *)file_info_buffer;
 
   for (;;) {
     File entry = rootFile.openNextFile();
     if (entry) {
-      memset(file_info, 0, sizeof(RawHid_file_info_t)); // probably not needed, but;
+      memset(file_info, 0, sizeof(RawHid_file_info_t));  // probably not needed, but;
       file_info->size = entry.size();
       DateTimeFields dtf;
       if (entry.getCreateTime(dtf)) file_info->createTime = makeTime(dtf);
@@ -649,19 +654,22 @@ void printSpaces(int num) {
   }
 }
 
+//=============================================================================
+// Change Directory
+//=============================================================================
 void changeDirectory(char *filename) {
   // Todo: more parsing of the filename.
-  rootFile.close(); // close off current one
+  rootFile.close();  // close off current one
 
   if (filename[0] == '\0') {
-      strcpy(currentDirectory, "/");
+    strcpy(currentDirectory, "/");
   } else {
     int index_last_slash = 0;
     for (int i = 0; currentDirectory[i] != 0; i++) {
       if (currentDirectory[i] == '/') index_last_slash = i;
     }
     if (strcmp(filename, "..") == 0) {
-      // remove last portion, except the root marker... 
+      // remove last portion, except the root marker...
       if (index_last_slash > 0) currentDirectory[index_last_slash] = '\0';
     } else {
       if (index_last_slash > 0) strcat(currentDirectory, "/");
@@ -676,6 +684,20 @@ void changeDirectory(char *filename) {
     strcpy(currentDirectory, "/");
     send_status_packet(2, 0);
   } else {
-    send_status_packet(0,0);
+    send_status_packet(0, 0);
+  }
+}
+
+
+void createDirectory(char *filename) {
+  char pathname[260];
+  strcpy(pathname, currentDirectory);
+  if (currentDirectory[1] != 0) strcat(currentDirectory, "/");
+  strcat(pathname, filename);
+
+  if (fs.mkdir(pathname)) {
+    send_status_packet(0, 0);
+  } else { 
+    send_status_packet(2, 0);
   }
 }

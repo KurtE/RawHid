@@ -60,7 +60,7 @@ void remote_dir(std::vector<std::string> cmd_line_parts) {
 		cb = strlen(filename);
 	}
 	if (!send_rawhid_packet(CMD_FILELIST, filename, (uint16_t)cb)) {
-		printf("Remote dir/ls failed\n");
+		printf("Remote dir/ls *** failed ***\n");
 		return;
 	}
 	uint8_t buf[512];
@@ -68,11 +68,11 @@ void remote_dir(std::vector<std::string> cmd_line_parts) {
 	for (;;) {
 		int cb = rawhid_recv(0, buf, 512, 1000);
 		if (cb <= 0) {
-			printf("Receive failed\n");
+			printf("Receive *** failed ***\n");
 			break;
 		}
 		if (packet->type == CMD_RESPONSE) {
-			printf("Completed\n");
+			printf("*** completed ***\n");
 			break;
 		}
 		else if (packet->type == CMD_FILEINFO) {
@@ -120,7 +120,7 @@ void change_directory(std::vector<std::string> cmd_line_parts) {
 		cb = strlen(filename);
 	}
 	if (!send_rawhid_packet(CMD_CD, filename, (uint16_t)cb)) {
-		printf("Change Directory failed\n");
+		printf("Change Directory *** failed***\n");
 		return;
 	}
 
@@ -130,8 +130,43 @@ void change_directory(std::vector<std::string> cmd_line_parts) {
 		int cb = rawhid_recv(0, buf, 512, 1000);
 		if (packet->type == CMD_RESPONSE) {
 			RawHID_status_packet_data_t* status_packet = (RawHID_status_packet_data_t*)packet->data;
-			if (status_packet->status == 0) printf("Completed\n");
-			else printf("Failed\n");
+			if (status_packet->status == 0) printf("*** completed ***\n");
+			else printf("*** failed ***\n");
+			break;
+		}
+		else {
+			printf("**** unexpected packet type:%u size:%u\n", packet->type, packet->size);
+		}
+	}
+
+}
+
+//-----------------------------------------------------------------------------
+// create  directory on the remote
+//-----------------------------------------------------------------------------
+void create_directory(std::vector<std::string> cmd_line_parts) {
+	printf("Create Directory called\n");
+
+	//todo: cleanup duplicate junk here.
+	const char* filename = nullptr;
+	size_t cb = 0;
+	if (cmd_line_parts.size() > 1) {
+		filename = cmd_line_parts[1].c_str();
+		cb = strlen(filename);
+	}
+	if (!send_rawhid_packet(CMD_MKDIR, filename, (uint16_t)cb)) {
+		printf("Make Directory *** failed ***\n");
+		return;
+	}
+
+	uint8_t buf[512];
+	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
+	for (;;) {
+		int cb = rawhid_recv(0, buf, 512, 1000);
+		if (packet->type == CMD_RESPONSE) {
+			RawHID_status_packet_data_t* status_packet = (RawHID_status_packet_data_t*)packet->data;
+			if (status_packet->status == 0) printf("*** completed ***\n");
+			else printf("*** failed ***\n");
 			break;
 		}
 		else {
@@ -180,7 +215,7 @@ void upload(std::vector<std::string> cmd_line_parts) {
 	// need to add some error checking.
 
 	if (!send_rawhid_packet(CMD_UPLOAD, pathname, (uint16_t)strlen((char*)pathname))) {
-		printf("upload failed\n");
+		printf("upload *** failed ***\n");
 		return;
 	}
 
@@ -189,7 +224,7 @@ void upload(std::vector<std::string> cmd_line_parts) {
 	RawHID_status_packet_data_t * status_packet = (RawHID_status_packet_data_t*)packet->data;
 	int cb = rawhid_recv(0, status_buf, 512, 1000);
 	if ((cb <= 0) || (packet->type != CMD_RESPONSE) || (status_packet->status != 0)) {
-		printf("upload failed\n");
+		printf("upload *** failed ***\n");
 		return;
 	}
 
@@ -217,6 +252,7 @@ void upload(std::vector<std::string> cmd_line_parts) {
 	size_t cbRead = 0;
 	uint8_t transfer_buf[512];
 	uint32_t start_time = GetTickCount();
+	uint8_t dot_count = 0;
 	while (!feof(fp)) {
 		do {
 			// see if the other side has sent us anything
@@ -226,6 +262,9 @@ void upload(std::vector<std::string> cmd_line_parts) {
 					RawHID_progress_packet_data_t* progress = (RawHID_progress_packet_data_t*)packet->data;
 					remote_buffer_free += progress->count;
 					//printf("Progress: %u %u\n", progress->count, remote_buffer_free);
+					printf(".");
+					dot_count++;
+					if ((dot_count & 0x3f) == 0) printf("\n");
 				}
 				// maybe check status as well
 			}
@@ -296,6 +335,7 @@ void download(std::vector<std::string> cmd_line_parts) {
 	// Lets try to write out 4K chunks.
 	// now lets receive the data or complete or the other side sent us a status.
 	RawHID_progress_packet_data_t progress_data = { FILE_IO_SIZE };
+	uint8_t dot_count = 0;
 	for (;;) {
 		int cb = rawhid_recv(0, status_buf, 512, 5000);
 		if (cb <= 0) {
@@ -325,6 +365,7 @@ void download(std::vector<std::string> cmd_line_parts) {
 					return;
 				}
 				printf(".");
+				if ((++dot_count & 0x3f) == 0)printf("\n");
 				report_count -= progress_data.count;
 			}
 			if (cb_data < cb_transfer) break;  // EOF
@@ -335,16 +376,27 @@ void download(std::vector<std::string> cmd_line_parts) {
 	}
 
 	// We finished :D 
-
 	// Modify date? 
-	DateTimeFields tm;
-	breakTime(modify_date_time, tm);
+	DateTimeFields dtf;
+	breakTime(modify_date_time, dtf);
+	SYSTEMTIME stm = { dtf.year + (1900 - 1601), dtf.mon + 1, dtf.wday, dtf.mday, dtf.hour, dtf.min, dtf.sec, 0 };
+	FILETIME ftm;
+	
+	//printf(" C: %02u/%02u/%04u %02u:%02u", dtf.mon + 1, dtf.mday,
+	//	dtf.year + 1900, dtf.hour, dtf.min);
+
+	SystemTimeToFileTime(&stm, &ftm);
+	SetFileTime(fp, nullptr, nullptr, &ftm);
+
 	//g_transfer_file.setModifyTime(tm);
 	fclose(fp);
 	
 	printf("\nCompleted, total byte: %u elapsed millis: %u\n", total_bytes_transfered, GetTickCount() - start_time);
 }
 
+//-----------------------------------------------------------------------------
+// Reset RAWHID
+//-----------------------------------------------------------------------------
 void resetRAWHID() {
 	printf("Send remote reset command\n");
 	send_rawhid_packet(CMD_RESET, nullptr, 0, 5000);
