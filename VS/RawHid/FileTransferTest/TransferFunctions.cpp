@@ -500,7 +500,7 @@ void download(std::vector<std::string> cmd_line_parts) {
 			if (cb_data == 0) break; // 0 length says EOF
 			size_t cbWritten = fwrite(packet->data, 1, cb_data, fp);
 			if (cbWritten < (size_t)cb_data) {
-				printf("failed incomplete write: %u != %u\n", cb_data, cbWritten);
+				printf("failed incomplete write: %u != %lu\n", cb_data, cbWritten);
 				fclose(fp);
 				send_status_packet(2, 0, 0, 5000); // tell them we failed.
 				return;
