@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <thread>
 #ifndef OS_LINUX
 #include <Windows.h>
 #endif
@@ -33,7 +34,6 @@ volatile bool g_clear_rawhid_messages = false;
 //=============================================================================
 extern int send_status_packet(int32_t status, uint32_t size, uint32_t modifyDateTime = 0,
     uint32_t timeout = 1000);
-extern bool OnReceiveHIDData(uint32_t usage, const uint8_t* data, uint32_t len);
 extern void setup();
 extern void loop();
 extern void show_command_help();
@@ -55,8 +55,8 @@ int main()
 //=============================================================================
 // ClearRAWHidMsgs
 //=============================================================================
-#ifndef OS_LINUX
-DWORD WINAPI clearRAWHidMsgs(__in LPVOID lpParameter) {
+//DWORD WINAPI clearRAWHidMsgs(__in LPVOID lpParameter) {
+void clearRAWHidMsgs(std::string msg) {
     while (g_clear_rawhid_messages) {
         uint8_t status_buf[512];
         RawHID_packet_t* packet = (RawHID_packet_t*)status_buf;
@@ -83,9 +83,7 @@ DWORD WINAPI clearRAWHidMsgs(__in LPVOID lpParameter) {
         else if (cb < 0) break;
     }
     printf(">>> Thread Exit <<<\n");
-    ExitThread(0);
 }
-#endif
 
 
 //=============================================================================
@@ -155,19 +153,16 @@ void loop() {
     printf(": ");
 
     // Quick and dirty thread to clear out messages from Teensy.
-#ifndef OS_LINUX
-    DWORD threadID1;
     g_clear_rawhid_messages = true;
-    HANDLE thread_handle = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)clearRAWHidMsgs, 0, 0, &threadID1);
-#endif
+    std::thread thread_cleanup_msgs(clearRAWHidMsgs, "");
     getline(cin, command_line);
     cmd_line_parts = split(command_line, " ");
 
     // signal the other thread to exit.
-#ifndef OS_LINUX
     g_clear_rawhid_messages = false;
-    if (thread_handle)WaitForSingleObject(thread_handle, 250);
-#endif
+    if (thread_cleanup_msgs.joinable()) {
+        thread_cleanup_msgs.join(); 
+    }
     for (auto i : cmd_line_parts) cout << i << endl;
 
     if ((cmd_line_parts[0] == "dir") || (cmd_line_parts[0] == "ls")) {

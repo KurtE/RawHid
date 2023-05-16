@@ -13,7 +13,7 @@
 
 #include <chrono>
 
-uint16_t rawhid_rx_tx_size = 64;       // later will change ... hopefully
+uint16_t rawhid_rx_tx_size = 64;       // Checks to see when connected.
 //uint8_t g_transfer_buffer[FILE_BUFFER_SIZE];
 //uint16_t g_transfer_buffer_head = 0;
 //uint16_t g_transfer_buffer_tail = 0;
@@ -242,7 +242,7 @@ void delete_file(std::vector<std::string> cmd_line_parts) {
 		filename = cmd_line_parts[1].c_str();
 		cb = strlen(filename);
 	}
-	if (!send_rawhid_packet(CMD_RMDIR, filename, (uint16_t)cb)) {
+	if (!send_rawhid_packet(CMD_DEL, filename, (uint16_t)cb)) {
 		printf("delete file *** failed ***\n");
 		return;
 	}
@@ -531,7 +531,7 @@ void download(std::vector<std::string> cmd_line_parts) {
 	if (modify_date_time) {
 		DateTimeFields dtf;
 		breakTime(modify_date_time, dtf);
-		SYSTEMTIME stm = { dtf.year + (WORD)(1900 - 1601), (WORD)(dtf.mon + 1), dtf.wday, dtf.mday, dtf.hour, dtf.min, dtf.sec, 0 };
+		SYSTEMTIME stm = { (WORD)(dtf.year + (WORD)(1900 - 1601)), (WORD)(dtf.mon + 1), dtf.wday, dtf.mday, dtf.hour, dtf.min, dtf.sec, 0 };
 		FILETIME ftm;
 
 		SystemTimeToFileTime(&stm, &ftm);

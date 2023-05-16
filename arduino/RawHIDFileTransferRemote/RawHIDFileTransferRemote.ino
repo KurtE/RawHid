@@ -1,4 +1,3 @@
-#include <MemoryHexDump.h>
 
 //=============================================================================
 // Simple test to see about doing file operations between two Teensy boards
@@ -26,7 +25,8 @@
 #define SD_CS_PIN BUILTIN_SDCARD
 
 // uncomment the line below to output debug information
-#define DEBUG_OUTPUT
+//#define DEBUG_OUTPUT
+//#include <MemoryHexDump.h>
 
 // uncomment this one if you wish to output debug to something other than Serial.
 #define DEBUG_PORT Serial1
@@ -202,9 +202,9 @@ void loop() {
         case CMD_DIR:
           print_dir((char *)packet->data);
           break;
-          break;
         case CMD_FILELIST:
           listFiles((char *)packet->data);
+          break;
         case CMD_CD:
           changeDirectory((char *)packet->data);
           break;
@@ -325,9 +325,15 @@ int checkForRawHIDReceive_ReceiveFile() {
 // build_path_name()
 //-----------------------------------------------------------------------------
 void build_path_name(char *pathname, const char *filename) {
-  strcpy(pathname, currentDirectory);
-  if (currentDirectory[1] != 0) strcat(pathname, "/");
-  strcat(pathname, filename);
+  // Note: I am going to remove the first / character
+  if (currentDirectory[1] == 0) {
+    // root directory just copy filename
+    strcpy(pathname, filename);
+  } else {
+    strcpy(pathname, currentDirectory+1); // don't copy the first /
+    strcat(pathname, "/");
+    strcat(pathname, filename);
+  }
   DBGPrintf("pathname: '%s'\n", pathname);
 }
 
@@ -615,6 +621,7 @@ bool listFiles(char *filename) {
       break;
     }
   }
+  send_status_packet(0,0);
   return true;
 }
 
