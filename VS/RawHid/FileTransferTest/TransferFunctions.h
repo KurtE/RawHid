@@ -7,6 +7,9 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+
+#include "hid.h"
+
 #if defined(OS_LINUX) || defined(OS_MACOSX)
 #include <sys/ioctl.h>
 #include <termios.h>
@@ -14,7 +17,6 @@
 #include <conio.h>
 #endif
 
-#include "hid.h"
 
 enum {
     CMD_NONE = -1,
@@ -30,7 +32,10 @@ enum {
     CMD_RESET,
     CMD_FILELIST,
     CMD_FILEINFO,
-    CMD_MKDIR
+    CMD_MKDIR,
+    CMD_RMDIR,
+    CMD_DEL,
+    CMD_PWD
 };
 
 
@@ -89,6 +94,9 @@ extern uint16_t rawhid_rx_tx_size;
 extern void remote_dir(std::vector<std::string> cmd_line_parts);
 extern void change_directory(std::vector<std::string> cmd_line_parts);
 extern void create_directory(std::vector<std::string> cmd_line_parts);
+extern void remove_directory(std::vector<std::string> cmd_line_parts);
+extern void delete_file(std::vector<std::string> cmd_line_parts);
+extern void print_remote_current_directory();
 extern void upload(std::vector<std::string> cmd_line_parts);
 extern void download(std::vector<std::string> cmd_line_parts);
 extern void breakTime(uint32_t time, DateTimeFields& tm);

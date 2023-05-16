@@ -26,7 +26,7 @@
 #define SD_CS_PIN BUILTIN_SDCARD
 
 // uncomment the line below to output debug information
-//#define DEBUG_OUTPUT
+#define DEBUG_OUTPUT
 
 // uncomment this one if you wish to output debug to something other than Serial.
 #define DEBUG_PORT Serial1
@@ -112,7 +112,10 @@ enum { CMD_NONE = -1,
        CMD_RESET,
        CMD_FILELIST,
        CMD_FILEINFO,
-       CMD_MKDIR
+       CMD_MKDIR,
+       CMD_RMDIR,
+       CMD_DEL,
+       CMD_PWD
 };
 
 //=============================================================================
@@ -203,12 +206,20 @@ void loop() {
         case CMD_FILELIST:
           listFiles((char *)packet->data);
         case CMD_CD:
-          // todo:
           changeDirectory((char *)packet->data);
           break;
         case CMD_MKDIR:
           createDirectory((char *)packet->data);
           break;
+        case CMD_DEL:
+          deleteFile((char *)packet->data);
+          break;
+        case CMD_RMDIR:
+          removeDirectory((char *)packet->data);
+          break;
+        case CMD_PWD:
+          return returnCurrentDirectory();
+          break;  
         case CMD_DOWNLOAD:
           sendFile((char *)packet->data);
           break;
@@ -235,7 +246,7 @@ int send_rawhid_packet(int cmd, void *packet_data, uint16_t data_size, uint32_t 
   packet->size = data_size;
   if (packet_data) memcpy(packet->data, packet_data, data_size);
 #ifdef DEBUG_OUTPUT
-  MemoryHexDump(DEBUG_PORT, buffer, 64, false, "RMT:\n");
+  //MemoryHexDump(DEBUG_PORT, buffer, 64, false, "RMT:\n");
 #endif
   elapsedMillis emSend = 0;
   int return_result = RawHID.send(buffer, timeout);
@@ -310,6 +321,15 @@ int checkForRawHIDReceive_ReceiveFile() {
   digitalWriteFast(4, LOW);
   return return_value;
 }
+//-----------------------------------------------------------------------------
+// build_path_name()
+//-----------------------------------------------------------------------------
+void build_path_name(char *pathname, const char *filename) {
+  strcpy(pathname, currentDirectory);
+  if (currentDirectory[1] != 0) strcat(pathname, "/");
+  strcat(pathname, filename);
+  DBGPrintf("pathname: '%s'\n", pathname);
+}
 
 //-----------------------------------------------------------------------------
 // receive file
@@ -328,7 +348,9 @@ int receiveFile(char *filename) {
   uint32_t total_bytes_transfered = 0;
 
   // need to add some error checking.
-  g_transfer_file = fs.open(filename, FILE_WRITE_BEGIN);
+  char pathname[260];
+  build_path_name(pathname, filename);
+  g_transfer_file = fs.open(pathname, FILE_WRITE_BEGIN);
   if (!g_transfer_file) {
     send_status_packet(1, 0);
     return -1;
@@ -477,9 +499,12 @@ void sendFile(char *filename) {
   g_transfer_complete = false;
 
   // need to add some error checking.
-  g_transfer_file = fs.open(filename, FILE_READ);
+  char pathname[260];
+  build_path_name(pathname, filename);
+
+  g_transfer_file = fs.open(pathname, FILE_READ);
   if (!g_transfer_file) {
-    Serial.println("SendFile failed, file not found");
+    Serial.printf("SendFile failed, file %s not found", pathname);
     send_status_packet(1, 0);  // send a failure code
     return;
   }
@@ -690,14 +715,40 @@ void changeDirectory(char *filename) {
 
 
 void createDirectory(char *filename) {
+  DBGPrintf("createDirectory(%s) called\n", filename);
   char pathname[260];
-  strcpy(pathname, currentDirectory);
-  if (currentDirectory[1] != 0) strcat(currentDirectory, "/");
-  strcat(pathname, filename);
+  build_path_name(pathname, filename);
 
   if (fs.mkdir(pathname)) {
     send_status_packet(0, 0);
   } else { 
     send_status_packet(2, 0);
   }
+}
+
+void deleteFile(char *filename) {
+  DBGPrintf("deleteFile(%s) called\n", filename);
+  char pathname[260];
+  build_path_name(pathname, filename);
+
+  if (fs.remove(pathname)) {
+    send_status_packet(0, 0);
+  } else { 
+    send_status_packet(2, 0);
+  }
+}
+
+void removeDirectory(char *filename) {
+  DBGPrintf("removeDirectory(%s) called\n", filename);
+  char pathname[260];
+  build_path_name(pathname, filename);
+
+  if (fs.rmdir(pathname)) {
+    send_status_packet(0, 0);
+  } else { 
+    send_status_packet(2, 0);
+  }
+}
+void returnCurrentDirectory() {
+  send_rawhid_packet(CMD_DATA, currentDirectory, strlen(currentDirectory) + 1);
 }

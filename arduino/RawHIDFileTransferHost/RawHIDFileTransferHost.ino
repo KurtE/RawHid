@@ -124,7 +124,10 @@ enum { CMD_NONE = -1,
        CMD_RESET,
        CMD_FILELIST,
        CMD_FILEINFO,
-       CMD_MKDIR
+       CMD_MKDIR,
+       CMD_RMDIR,
+       CMD_DEL,
+       CMD_PWD
 };
 
 

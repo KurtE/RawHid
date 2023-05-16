@@ -2,10 +2,16 @@
 #include <fstream>
 //#include <winnt.h>
 //#include "C:/Program Files (x86)/Windows Kits/10/Include/10.0.19041.0/um/winnt.h"
+#ifndef OS_LINUX
 #include <Windows.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef OS_LINUX
 #include <sysinfoapi.h>
+#endif
+
+#include <chrono>
 
 uint16_t rawhid_rx_tx_size = 64;       // later will change ... hopefully
 //uint8_t g_transfer_buffer[FILE_BUFFER_SIZE];
@@ -13,6 +19,7 @@ uint16_t rawhid_rx_tx_size = 64;       // later will change ... hopefully
 //uint16_t g_transfer_buffer_tail = 0;
 uint8_t buffer[512];  // most of the time will be 64 bytes, but if we support 512...
 
+extern uint32_t makeTime(const DateTimeFields& tm);
 
 
 //=============================================================================
@@ -78,7 +85,7 @@ void remote_dir(std::vector<std::string> cmd_line_parts) {
 		else if (packet->type == CMD_FILEINFO) {
 			RawHid_file_info_t* file_info = (RawHid_file_info_t *)packet->data;
 			printf("%s", file_info->name);
-			printSpaces(36 - strlen(file_info->name));
+			printSpaces(36 - (int)strlen(file_info->name));
 			DateTimeFields dtf;
 			if (file_info->createTime) {
 				breakTime(file_info->createTime, dtf);
@@ -128,6 +135,10 @@ void change_directory(std::vector<std::string> cmd_line_parts) {
 	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
 	for (;;) {
 		int cb = rawhid_recv(0, buf, 512, 1000);
+		if (cb <= 0) {
+			printf("*** Timeout ***\n");
+			break;
+		}
 		if (packet->type == CMD_RESPONSE) {
 			RawHID_status_packet_data_t* status_packet = (RawHID_status_packet_data_t*)packet->data;
 			if (status_packet->status == 0) printf("*** completed ***\n");
@@ -163,6 +174,10 @@ void create_directory(std::vector<std::string> cmd_line_parts) {
 	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
 	for (;;) {
 		int cb = rawhid_recv(0, buf, 512, 1000);
+		if (cb <= 0) {
+			printf("*** Timeout ***\n");
+			break;
+		}
 		if (packet->type == CMD_RESPONSE) {
 			RawHID_status_packet_data_t* status_packet = (RawHID_status_packet_data_t*)packet->data;
 			if (status_packet->status == 0) printf("*** completed ***\n");
@@ -176,6 +191,111 @@ void create_directory(std::vector<std::string> cmd_line_parts) {
 
 }
 
+//-----------------------------------------------------------------------------
+// Remove  directory on the remote
+//-----------------------------------------------------------------------------
+void remove_directory(std::vector<std::string> cmd_line_parts) {
+	printf("Remove Directory called\n");
+
+	//todo: cleanup duplicate junk here.
+	const char* filename = nullptr;
+	size_t cb = 0;
+	if (cmd_line_parts.size() > 1) {
+		filename = cmd_line_parts[1].c_str();
+		cb = strlen(filename);
+	}
+	if (!send_rawhid_packet(CMD_RMDIR, filename, (uint16_t)cb)) {
+		printf("Remove Directory *** failed ***\n");
+		return;
+	}
+
+	uint8_t buf[512];
+	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
+	for (;;) {
+		int cb = rawhid_recv(0, buf, 512, 1000);
+		if (cb <= 0) {
+			printf("*** Timeout ***\n");
+			break;
+		}
+		if (packet->type == CMD_RESPONSE) {
+			RawHID_status_packet_data_t* status_packet = (RawHID_status_packet_data_t*)packet->data;
+			if (status_packet->status == 0) printf("*** completed ***\n");
+			else printf("*** failed ***\n");
+			break;
+		}
+		else {
+			printf("**** unexpected packet type:%u size:%u\n", packet->type, packet->size);
+		}
+	}
+}
+
+//-----------------------------------------------------------------------------
+// delete a file on the remote
+//-----------------------------------------------------------------------------
+void delete_file(std::vector<std::string> cmd_line_parts) {
+	printf("delete file called\n");
+
+	//todo: cleanup duplicate junk here.
+	const char* filename = nullptr;
+	size_t cb = 0;
+	if (cmd_line_parts.size() > 1) {
+		filename = cmd_line_parts[1].c_str();
+		cb = strlen(filename);
+	}
+	if (!send_rawhid_packet(CMD_RMDIR, filename, (uint16_t)cb)) {
+		printf("delete file *** failed ***\n");
+		return;
+	}
+
+	uint8_t buf[512];
+	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
+	for (;;) {
+		int cb = rawhid_recv(0, buf, 512, 1000);
+		if (cb <= 0) {
+			printf("*** Timeout ***\n");
+			break;
+		}
+		if (packet->type == CMD_RESPONSE) {
+			RawHID_status_packet_data_t* status_packet = (RawHID_status_packet_data_t*)packet->data;
+			if (status_packet->status == 0) printf("*** completed ***\n");
+			else printf("*** failed ***\n");
+			break;
+		}
+		else {
+			printf("**** unexpected packet type:%u size:%u\n", packet->type, packet->size);
+		}
+	}
+}
+
+extern void print_remote_current_directory(std::vector<std::string> cmd_line_parts);
+//-----------------------------------------------------------------------------
+// delete a file on the remote
+//-----------------------------------------------------------------------------
+void print_remote_current_directory() {
+	printf("retrieve remote current directory\n");
+
+	if (!send_rawhid_packet(CMD_PWD, nullptr, 0)) {
+		printf("PWD command *** failed ***\n");
+		return;
+	}
+
+	uint8_t buf[512];
+	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
+	for (;;) {
+		int cb = rawhid_recv(0, buf, 512, 1000);
+		if (cb <= 0) {
+			printf("*** Timeout ***\n");
+			break;
+		}
+		if (packet->type == CMD_DATA) {
+			printf("\t'%s'\n", packet->data);
+			break;
+		}
+		else {
+			printf("**** unexpected packet type:%u size:%u\n", packet->type, packet->size);
+		}
+	}
+}
 
 //-----------------------------------------------------------------------------
 // upload
@@ -193,8 +313,13 @@ void upload(std::vector<std::string> cmd_line_parts) {
 	const char* pathname = cmd_line_parts[1].c_str();
 	
 	// fileInfo.CreationTime is when file was created.
+#ifdef OS_LINUX
+	fp = fopen(pathname, "rb"); 
+	if (fp == NULL) {
+#else
 	errno_t status = fopen_s(&fp, pathname, "rb");
 	if (status != 0) {
+#endif
 		printf("Failed to open %s\n", pathname);
 		return;
 	}
@@ -238,12 +363,21 @@ void upload(std::vector<std::string> cmd_line_parts) {
 	uint32_t file_size = offset;
 	printf("File size:%u\n", file_size);
 
-	uint32_t count_bytes_sent = 0;
-	//DateTimeFields dtf;
-	//g_transfer_file.getModifyTime(dtf);
-	//DBGPrintf("File Size:%u Modify: %02u/%02u/%04u %02u:%02u\n", file_size,
-	//	dtf.mon + 1, dtf.mday, dtf.year + 1900, dtf.hour, dtf.min);
-	send_status_packet(0, file_size, 0 /*/makeTime(dtf)*/, 5000);  // send a failure code
+	// Modify date? 
+	uint16_t modify_date = 0;
+#ifndef OS_LINUX
+	FILETIME ftm;
+	if (GetFileTime(fp, nullptr, nullptr, &ftm)) {
+		SYSTEMTIME stm;
+		FileTimeToSystemTime(&ftm, &stm);
+		DateTimeFields dtf = { (uint8_t)stm.wSecond, (uint8_t)stm.wMinute, (uint8_t)stm.wHour, (uint8_t)stm.wDayOfWeek, 
+			(uint8_t)stm.wDay, (uint8_t)(stm.wMonth - 1),(uint8_t)(stm.wYear - (1900 - 1601)) };
+		modify_date = makeTime(dtf);
+		printf("Modify Date: %02u / %02u / %04u %02u: %02u", stm.wMonth, stm.wDay, stm.wYear + 1601,
+			stm.wHour, stm.wMinute);
+	}
+#endif
+	send_status_packet(0, file_size, modify_date, 5000);  // send a failure code
 
 
 	// in this case we are doing a quick and dirty
@@ -251,13 +385,19 @@ void upload(std::vector<std::string> cmd_line_parts) {
 	printf("bytes per data packet:%u\n", cb_transfer);
 	size_t cbRead = 0;
 	uint8_t transfer_buf[512];
-	uint32_t start_time = GetTickCount();
+	//uint32_t start_time = GetTickCount();
+	using namespace std::chrono;
+	high_resolution_clock::time_point start_time = high_resolution_clock::now();
 	uint8_t dot_count = 0;
 	while (!feof(fp)) {
 		do {
 			// see if the other side has sent us anything
 			int cb = rawhid_recv(0, status_buf, 512, 0);
-			if (cb > 0) {
+			if (cb < 0) {
+				printf("*** Timeout ***\n");
+				break;
+			}
+			else if (cb > 0) {
 				if (packet->type == CMD_PROGRESS) {
 					RawHID_progress_packet_data_t* progress = (RawHID_progress_packet_data_t*)packet->data;
 					remote_buffer_free += progress->count;
@@ -277,14 +417,18 @@ void upload(std::vector<std::string> cmd_line_parts) {
 			fclose(fp);
 			return;
 		}
-		remote_buffer_free -= cbRead;
+		remote_buffer_free -= (uint32_t)cbRead;
 	}
 	if (cbRead == cb_transfer) {
 		// send 0 length to let them know we are done
 		send_rawhid_packet(CMD_DATA, transfer_buf, 0, 5000);
 	}
 	fclose(fp);
-	printf("\n*** Completed dt:%u ***\n", GetTickCount() - start_time);
+
+	high_resolution_clock::time_point end_time = high_resolution_clock::now();
+	duration<double, std::milli> delta_time = end_time - start_time;
+
+	printf("\n*** Completed dt:%f ***\n", delta_time.count());
 }
 
 
@@ -320,12 +464,18 @@ void download(std::vector<std::string> cmd_line_parts) {
 
 	uint32_t modify_date_time = status_packet->modifyDateTime;
 	// need to add some error checking.
-	uint32_t start_time = GetTickCount();
+	using namespace std::chrono;
+	high_resolution_clock::time_point start_time = high_resolution_clock::now();
 	uint32_t total_bytes_transfered = 0;
 	uint32_t report_count = 0;
-	errno_t status = fopen_s(&fp, local_filename, "wb");
 	uint16_t cb_transfer = rawhid_rx_tx_size - sizeof(RawHID_packet_header_t);
+#ifdef OS_LINUX
+	fp = fopen(local_filename, "wb");
+	if (fp == NULL) {
+#else
+	errno_t status = fopen_s(&fp, local_filename, "wb");
 	if (status != 0) {
+#endif
 		printf("Failed to open %s\n", local_filename);
 		send_status_packet(2, 0, 0, 5000); // tell them we failed.
 		return;
@@ -377,21 +527,25 @@ void download(std::vector<std::string> cmd_line_parts) {
 
 	// We finished :D 
 	// Modify date? 
-	DateTimeFields dtf;
-	breakTime(modify_date_time, dtf);
-	SYSTEMTIME stm = { dtf.year + (1900 - 1601), dtf.mon + 1, dtf.wday, dtf.mday, dtf.hour, dtf.min, dtf.sec, 0 };
-	FILETIME ftm;
-	
-	//printf(" C: %02u/%02u/%04u %02u:%02u", dtf.mon + 1, dtf.mday,
-	//	dtf.year + 1900, dtf.hour, dtf.min);
+#ifndef OS_LINUX
+	if (modify_date_time) {
+		DateTimeFields dtf;
+		breakTime(modify_date_time, dtf);
+		SYSTEMTIME stm = { dtf.year + (WORD)(1900 - 1601), (WORD)(dtf.mon + 1), dtf.wday, dtf.mday, dtf.hour, dtf.min, dtf.sec, 0 };
+		FILETIME ftm;
 
-	SystemTimeToFileTime(&stm, &ftm);
-	SetFileTime(fp, nullptr, nullptr, &ftm);
-
-	//g_transfer_file.setModifyTime(tm);
+		SystemTimeToFileTime(&stm, &ftm);
+		SetFileTime(fp, nullptr, nullptr, &ftm);
+		printf("Modify Date: %02u / %02u / %04u %02u: %02u", stm.wMonth, stm.wDay, stm.wYear + 1601,
+			stm.wHour, stm.wMinute);
+	}
+#endif
 	fclose(fp);
 	
-	printf("\nCompleted, total byte: %u elapsed millis: %u\n", total_bytes_transfered, GetTickCount() - start_time);
+	high_resolution_clock::time_point end_time = high_resolution_clock::now();
+	duration<double, std::milli> delta_time = end_time - start_time;
+
+	printf("\nCompleted, total byte: %u elapsed millis: %f\n", total_bytes_transfered, delta_time.count());
 }
 
 //-----------------------------------------------------------------------------
@@ -500,3 +654,4 @@ uint32_t makeTime(const DateTimeFields& tm)
 	seconds += tm.sec;
 	return seconds;
 }
+

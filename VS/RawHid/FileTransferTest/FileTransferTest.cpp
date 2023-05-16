@@ -6,7 +6,9 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#ifndef OS_LINUX
 #include <Windows.h>
+#endif
 using namespace std;
 #include <string>
 #if defined(OS_LINUX) || defined(OS_MACOSX)
@@ -53,7 +55,7 @@ int main()
 //=============================================================================
 // ClearRAWHidMsgs
 //=============================================================================
-
+#ifndef OS_LINUX
 DWORD WINAPI clearRAWHidMsgs(__in LPVOID lpParameter) {
     while (g_clear_rawhid_messages) {
         uint8_t status_buf[512];
@@ -83,7 +85,7 @@ DWORD WINAPI clearRAWHidMsgs(__in LPVOID lpParameter) {
     printf(">>> Thread Exit <<<\n");
     ExitThread(0);
 }
-
+#endif
 
 
 //=============================================================================
@@ -153,17 +155,19 @@ void loop() {
     printf(": ");
 
     // Quick and dirty thread to clear out messages from Teensy.
+#ifndef OS_LINUX
     DWORD threadID1;
     g_clear_rawhid_messages = true;
     HANDLE thread_handle = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)clearRAWHidMsgs, 0, 0, &threadID1);
-
+#endif
     getline(cin, command_line);
     cmd_line_parts = split(command_line, " ");
 
     // signal the other thread to exit.
+#ifndef OS_LINUX
     g_clear_rawhid_messages = false;
     if (thread_handle)WaitForSingleObject(thread_handle, 250);
-
+#endif
     for (auto i : cmd_line_parts) cout << i << endl;
 
     if ((cmd_line_parts[0] == "dir") || (cmd_line_parts[0] == "ls")) {
@@ -178,10 +182,18 @@ void loop() {
     else if ((cmd_line_parts[0] == "cd") || (cmd_line_parts[0] == "c")) {
         change_directory(cmd_line_parts);
     }
+    else if (cmd_line_parts[0] == "pwd") {
+        print_remote_current_directory();
+    }
     else if ((cmd_line_parts[0] == "mkdir") || (cmd_line_parts[0] == "m")) {
         create_directory(cmd_line_parts);
     }
-
+    else if (cmd_line_parts[0] == "rmdir") {
+        remove_directory(cmd_line_parts);
+    }  
+    else if ((cmd_line_parts[0] == "del") || (cmd_line_parts[0] == "rm")) {
+        delete_file(cmd_line_parts);
+    }
     else if ((cmd_line_parts[0] == "quit") || (cmd_line_parts[0] == "exit")) {
         exit(0);
     }
@@ -218,7 +230,10 @@ void show_command_help() {
     printf("Command list\n");
     printf("\tdir(or ls) [optional pattern] - show directory files on remote FS\n");
     printf("\tcd <file pattern> - Change directory on remote FS\n");
+    printf("\tpwd - Print remote working directory\n");
     printf("\tmkdir <name> - Create a directory on remote FS\n");
+    printf("\trmdir <name> - Remove a directory on remote FS\n");
+    printf("\tdel(rm) <name> - delete a file on FS\n");
     printf("\tdownload(or d) <remote file> <localfile spec> - download(Receive) file from From remote\n");
     printf("\tupload(or u) <local file spec> [remote file spec] - Upload file to remote\n");
     //printf("\tld [optional pattern] - show directory files on Local FS\n");

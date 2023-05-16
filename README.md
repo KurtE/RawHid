@@ -29,11 +29,18 @@ teensy40.menu.usb.rawhid512.build.usbtype=USB_RAWHID512
 teensy40.menu.usb.rawhid.upload_port.usbtype=USB_RAWHID
 teensy40.menu.usb.rawhid512.fake_serial=teensy_gateway
 ```
-So far my testing for 512 bytes has been done on linux... 
+My earlier testing for 512 bytes has been done on linux... 
 
-I am currently playing with it on windows 10.  So far I have been able to build with 
-Ubuntu prompt under windows and now have it building using Visual Studio after
-I installed the current Windows SDK and the WDK or some such name...
+I have since then done most of my testing on Windows.  Earlier on Windows 10, now on
+Windows 11.  The earlier builds were done by doing the  build with 
+Ubuntu prompt under windows.
 
-Again this is only an experiment, unclear if it will be finished and/or will be merged back into the
-official RawHid support
+I am now doing most of my stuff using Visual Studio 2022.  I needed to install the WDK.  I used the
+instructions up at: https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk
+
+There was one additional package I needed to install, having to do with Spectre. 
+
+I had to rerun the Visual Studio installer with modify and added some packages.  Go to the Individual Components and I believe it had a name like: ... VS 2022 C++ x64/x86 Spectre-mitigated libs (latest)
+
+Again this is only an experiment,  But it is working pretty good. Hopefully it will be integrated
+back into the official RawHid support
