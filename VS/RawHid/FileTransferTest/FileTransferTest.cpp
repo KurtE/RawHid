@@ -56,7 +56,7 @@ int main()
 // ClearRAWHidMsgs
 //=============================================================================
 //DWORD WINAPI clearRAWHidMsgs(__in LPVOID lpParameter) {
-void clearRAWHidMsgs(std::string msg) {
+void clearRAWHidMsgs() {
     while (g_clear_rawhid_messages) {
         uint8_t status_buf[512];
         RawHID_packet_t* packet = (RawHID_packet_t*)status_buf;
@@ -154,7 +154,7 @@ void loop() {
 
     // Quick and dirty thread to clear out messages from Teensy.
     g_clear_rawhid_messages = true;
-    std::thread thread_cleanup_msgs(clearRAWHidMsgs, "");
+    std::thread thread_cleanup_msgs(clearRAWHidMsgs);
     getline(cin, command_line);
     cmd_line_parts = split(command_line, " ");
 
