@@ -51,6 +51,8 @@ static hid_t *last_hid = NULL;
 struct hid_struct {
 	IOHIDDeviceRef ref;
 	int open;
+	int rx_size;
+	int tx_size;
 	uint8_t buffer[BUFFER_SIZE];
 	buffer_t *first_buffer;
 	buffer_t *last_buffer;
@@ -129,6 +131,26 @@ int rawhid_recv(int num, void *buf, int len, int timeout)
 	CFRelease(timer);
 	return ret;
 }
+
+int rawhid_rxSize(int num)
+{
+	hid_t *hid;
+
+	hid = get_hid(num);
+	if (!hid || !hid->open) return -1;
+	return hid->rx_size;
+}
+
+int rawhid_txSize(int num)
+{
+	hid_t *hid;
+
+	hid = get_hid(num);
+	if (!hid || !hid->open) return -1;
+	return hid->tx_size;
+}
+
+
 
 static void input_callback(void *context, IOReturn ret, void *sender,
 	IOHIDReportType type, uint32_t id, uint8_t *data, CFIndex len)
@@ -406,6 +428,9 @@ static void attach_callback(void *context, IOReturn r, void *hid_mgr, IOHIDDevic
 		input_callback, h);
 	h->ref = dev;
 	h->open = 1;
+	h->rx_size = get_int_property(dev, CFSTR(kIOHIDMaxInputReportSizeKey));
+	h->tx_size = get_int_property(dev, CFSTR(kIOHIDMaxOutputReportSizeKey));
+
 	add_hid(h);
 }
 
