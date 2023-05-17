@@ -413,6 +413,20 @@ static void detach_callback(void *context, IOReturn r, void *hid_mgr, IOHIDDevic
 	}
 }
 
+static int32_t get_int_property(IOHIDDeviceRef device, CFStringRef key)
+{
+	CFTypeRef ref;
+	int32_t value;
+
+	ref = IOHIDDeviceGetProperty(device, key);
+	if (ref) {
+		if (CFGetTypeID(ref) == CFNumberGetTypeID()) {
+			CFNumberGetValue((CFNumberRef) ref, kCFNumberSInt32Type, &value);
+			return value;
+		}
+	}
+	return 0;
+}
 
 static void attach_callback(void *context, IOReturn r, void *hid_mgr, IOHIDDeviceRef dev)
 {
