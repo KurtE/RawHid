@@ -6,6 +6,10 @@
  *  rawhid_recv - receive a packet
  *  rawhid_send - send a packet
  *  rawhid_close - close a device
+ *  rawhid_rxSize - Size of max rx packets typically 64
+ *  rawhid_txSize - tx packets
+ *  rawhid_usage_page - return the usage page of the device
+ *  rawhid_usage - return the usage. 
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -50,16 +54,22 @@ static hid_t *first_hid = NULL;
 static hid_t *last_hid = NULL;
 struct hid_struct {
 	HANDLE handle;
+	HANDLE rx_event;
+	HANDLE tx_event;
+	CRITICAL_SECTION rx_mutex;
+	CRITICAL_SECTION tx_mutex;
 	int open;
 	int rx_size;
 	int tx_size;
+	int usage_page;
+	int usage;
 	struct hid_struct *prev;
 	struct hid_struct *next;
 };
-static HANDLE rx_event=NULL;
-static HANDLE tx_event=NULL;
-static CRITICAL_SECTION rx_mutex;
-static CRITICAL_SECTION tx_mutex;
+//static HANDLE rx_event=NULL;
+//static HANDLE tx_event=NULL;
+//static CRITICAL_SECTION rx_mutex;
+//static CRITICAL_SECTION tx_mutex;
 
 
 // private functions, not intended to be used from outside this file
@@ -91,18 +101,18 @@ int rawhid_recv(int num, void *buf, int len, int timeout)
 	if (sizeof(tmpbuf) < len + 1) return -1;
 	hid = get_hid(num);
 	if (!hid || !hid->open) return -1;
-	EnterCriticalSection(&rx_mutex);
-	ResetEvent(&rx_event);
+	EnterCriticalSection(&hid->rx_mutex);
+	ResetEvent(&hid->rx_event);
 	memset(&ov, 0, sizeof(ov));
-	ov.hEvent = rx_event;
+	ov.hEvent = hid->rx_event;
 	if (!ReadFile(hid->handle, tmpbuf, len + 1, NULL, &ov)) {
 		if (GetLastError() != ERROR_IO_PENDING) goto return_error;
-		r = WaitForSingleObject(rx_event, timeout);
+		r = WaitForSingleObject(hid->rx_event, timeout);
 		if (r == WAIT_TIMEOUT) goto return_timeout;
 		if (r != WAIT_OBJECT_0) goto return_error;
 	}
 	if (!GetOverlappedResult(hid->handle, &ov, &n, FALSE)) goto return_error;
-	LeaveCriticalSection(&rx_mutex);
+	LeaveCriticalSection(&hid->rx_mutex);
 	if (n <= 0) return -1;
 	n--;
 	if (n > (DWORD)len) n = len;
@@ -110,11 +120,11 @@ int rawhid_recv(int num, void *buf, int len, int timeout)
 	return n;
 return_timeout:
 	CancelIo(hid->handle);
-	LeaveCriticalSection(&rx_mutex);
+	LeaveCriticalSection(&hid->rx_mutex);
 	return 0;
 return_error:
 	print_win32_err();
-	LeaveCriticalSection(&rx_mutex);
+	LeaveCriticalSection(&hid->rx_mutex);
 	return -1;
 }
 
@@ -137,29 +147,29 @@ int rawhid_send(int num, void *buf, int len, int timeout)
 	if (sizeof(tmpbuf) < len + 1) return -1;
 	hid = get_hid(num);
 	if (!hid || !hid->open) return -1;
-	EnterCriticalSection(&tx_mutex);
-	ResetEvent(&tx_event);
+	EnterCriticalSection(&hid->tx_mutex);
+	ResetEvent(&hid->tx_event);
 	memset(&ov, 0, sizeof(ov));
-	ov.hEvent = tx_event;
+	ov.hEvent = hid->tx_event;
 	tmpbuf[0] = 0;
 	memcpy(tmpbuf + 1, buf, len);
 	if (!WriteFile(hid->handle, tmpbuf, len + 1, NULL, &ov)) {
 		if (GetLastError() != ERROR_IO_PENDING) goto return_error;
-		r = WaitForSingleObject(tx_event, timeout);
+		r = WaitForSingleObject(hid->tx_event, timeout);
 		if (r == WAIT_TIMEOUT) goto return_timeout;
 		if (r != WAIT_OBJECT_0) goto return_error;
 	}
 	if (!GetOverlappedResult(hid->handle, &ov, &n, FALSE)) goto return_error;
-	LeaveCriticalSection(&tx_mutex);
+	LeaveCriticalSection(&hid->tx_mutex);
 	if (n <= 0) return -1;
 	return n - 1;
 return_timeout:
 	CancelIo(hid->handle);
-	LeaveCriticalSection(&tx_mutex);
+	LeaveCriticalSection(&hid->tx_mutex);
 	return 0;
 return_error:
 	print_win32_err();
-	LeaveCriticalSection(&tx_mutex);
+	LeaveCriticalSection(&hid->tx_mutex);
 	return -1;
 }
 
@@ -180,6 +190,25 @@ int rawhid_txSize(int num)
 	if (!hid || !hid->open) return -1;
 	return hid->tx_size;
 }
+
+int rawhid_usage_page(int num)
+{
+	hid_t* hid;
+
+	hid = get_hid(num);
+	if (!hid || !hid->open) return -1;
+	return hid->usage_page;
+}
+
+int rawhid_usage(int num)
+{
+	hid_t* hid;
+
+	hid = get_hid(num);
+	if (!hid || !hid->open) return -1;
+	return hid->usage;
+}
+
 
 
 //  rawhid_open - open 1 or more devices
@@ -210,12 +239,14 @@ int rawhid_open(int max, int vid, int pid, int usage_page, int usage)
 
 	if (first_hid) free_all_hid();
 	if (max < 1) return 0;
+#if 0
 	if (!rx_event) {
 		rx_event = CreateEvent(NULL, TRUE, TRUE, NULL);
 		tx_event = CreateEvent(NULL, TRUE, TRUE, NULL);
 		InitializeCriticalSection(&rx_mutex);
 		InitializeCriticalSection(&tx_mutex);
 	}
+#endif
 	HidD_GetHidGuid(&guid);
 	info = SetupDiGetClassDevs(&guid, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
 	if (info == INVALID_HANDLE_VALUE) return 0;
@@ -264,9 +295,18 @@ int rawhid_open(int max, int vid, int pid, int usage_page, int usage)
 			continue;
 		}
 		hid->handle = h;
+		// initialize the event and critical sections.
+		hid->rx_event = CreateEvent(NULL, TRUE, TRUE, NULL);
+		hid->tx_event = CreateEvent(NULL, TRUE, TRUE, NULL);
+		InitializeCriticalSection(&hid->rx_mutex);
+		InitializeCriticalSection(&hid->tx_mutex);
+
 		hid->open = 1;
 		hid->rx_size = capabilities.InputReportByteLength - 1;
 		hid->tx_size = capabilities.OutputReportByteLength - 1;
+		// remember the usage page and usage, so user can see which one is which if they pass in wild cards...
+		hid->usage_page = capabilities.UsagePage;
+		hid->usage = capabilities.Usage;
 		add_hid(hid);
 		count++;
 		if (count >= max) return count;
@@ -320,6 +360,10 @@ static void free_all_hid(void)
 	hid_t *p, *q;
 
 	for (p = first_hid; p; p = p->next) {
+		DeleteCriticalSection(&p->rx_mutex);
+		DeleteCriticalSection(&p->tx_mutex);
+		CloseHandle(&p->rx_event);
+		CloseHandle(&p->tx_event);
 		hid_close(p);
 	}
 	p = first_hid;
@@ -335,6 +379,7 @@ static void free_all_hid(void)
 static void hid_close(hid_t *hid)
 {
 	CloseHandle(hid->handle);
+
 	hid->handle = NULL;
 }
 

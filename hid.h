@@ -9,6 +9,8 @@ int rawhid_rxSize(int num);
 int rawhid_txSize(int num);
 int rawhid_rxAttr(int num);
 int rawhid_txAttr(int num);
+int rawhid_usage_page(int num);
+int rawhid_usage(int num);
 void rawhid_close(int num);
 
 #ifdef __cplusplus

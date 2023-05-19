@@ -13,7 +13,10 @@
 
 #include <chrono>
 
-uint16_t rawhid_rx_tx_size = 64;       // Checks to see when connected.
+uint16_t g_rawhid_rx_tx_size = 64;      // Checks to see when connected.
+int g_rawhid_index = 0;				//which rawhid index to use
+int g_rawhid_sereum_index = -1;  //which rawhid index to use
+
 //uint8_t g_transfer_buffer[FILE_BUFFER_SIZE];
 //uint16_t g_transfer_buffer_head = 0;
 //uint16_t g_transfer_buffer_tail = 0;
@@ -27,14 +30,14 @@ extern uint32_t makeTime(const DateTimeFields& tm);
 //=============================================================================
 bool send_rawhid_packet(int cmd, const void* packet_data, uint16_t data_size, uint32_t timeout = 250) {
 	//DBGPrintf("lsrhid: %d %p %u %u\n", cmd, packet_data, data_size, timeout);
-	memset(buffer, 0, rawhid_rx_tx_size);
+	memset(buffer, 0, g_rawhid_rx_tx_size);
 	RawHID_packet_t* packet = (RawHID_packet_t*)buffer;
 	packet->type = cmd;
 	if (packet_data) memcpy(packet->data, packet_data, data_size);
 	packet->size = data_size;
 
 	//elapsedMillis emTimeout = 0;
-	if (rawhid_send(0, buffer, rawhid_rx_tx_size, timeout) > 0) return true;
+	if (rawhid_send(g_rawhid_index, buffer, g_rawhid_rx_tx_size, timeout) > 0) return true;
 	return false;
 }
 
@@ -73,7 +76,7 @@ void remote_dir(std::vector<std::string> cmd_line_parts) {
 	uint8_t buf[512];
 	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
 	for (;;) {
-		int cb = rawhid_recv(0, buf, 512, 1000);
+		int cb = rawhid_recv(g_rawhid_index, buf, 512, 1000);
 		if (cb <= 0) {
 			printf("Receive *** failed ***\n");
 			break;
@@ -134,7 +137,7 @@ void change_directory(std::vector<std::string> cmd_line_parts) {
 	uint8_t buf[512];
 	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
 	for (;;) {
-		int cb = rawhid_recv(0, buf, 512, 1000);
+		int cb = rawhid_recv(g_rawhid_index, buf, 512, 1000);
 		if (cb <= 0) {
 			printf("*** Timeout ***\n");
 			break;
@@ -173,7 +176,7 @@ void create_directory(std::vector<std::string> cmd_line_parts) {
 	uint8_t buf[512];
 	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
 	for (;;) {
-		int cb = rawhid_recv(0, buf, 512, 1000);
+		int cb = rawhid_recv(g_rawhid_index, buf, 512, 1000);
 		if (cb <= 0) {
 			printf("*** Timeout ***\n");
 			break;
@@ -212,7 +215,7 @@ void remove_directory(std::vector<std::string> cmd_line_parts) {
 	uint8_t buf[512];
 	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
 	for (;;) {
-		int cb = rawhid_recv(0, buf, 512, 1000);
+		int cb = rawhid_recv(g_rawhid_index, buf, 512, 1000);
 		if (cb <= 0) {
 			printf("*** Timeout ***\n");
 			break;
@@ -250,7 +253,7 @@ void delete_file(std::vector<std::string> cmd_line_parts) {
 	uint8_t buf[512];
 	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
 	for (;;) {
-		int cb = rawhid_recv(0, buf, 512, 1000);
+		int cb = rawhid_recv(g_rawhid_index, buf, 512, 1000);
 		if (cb <= 0) {
 			printf("*** Timeout ***\n");
 			break;
@@ -282,7 +285,7 @@ void print_remote_current_directory() {
 	uint8_t buf[512];
 	RawHID_packet_t* packet = (RawHID_packet_t*)buf;
 	for (;;) {
-		int cb = rawhid_recv(0, buf, 512, 1000);
+		int cb = rawhid_recv(g_rawhid_index, buf, 512, 1000);
 		if (cb <= 0) {
 			printf("*** Timeout ***\n");
 			break;
@@ -347,7 +350,7 @@ void upload(std::vector<std::string> cmd_line_parts) {
 	uint8_t status_buf[512];
 	RawHID_packet_t* packet = (RawHID_packet_t*)status_buf;
 	RawHID_status_packet_data_t * status_packet = (RawHID_status_packet_data_t*)packet->data;
-	int cb = rawhid_recv(0, status_buf, 512, 1000);
+	int cb = rawhid_recv(g_rawhid_index, status_buf, 512, 1000);
 	if ((cb <= 0) || (packet->type != CMD_RESPONSE) || (status_packet->status != 0)) {
 		printf("upload *** failed ***\n");
 		return;
@@ -381,7 +384,7 @@ void upload(std::vector<std::string> cmd_line_parts) {
 
 
 	// in this case we are doing a quick and dirty
-	uint16_t cb_transfer = rawhid_rx_tx_size - sizeof(RawHID_packet_header_t);
+	uint16_t cb_transfer = g_rawhid_rx_tx_size - sizeof(RawHID_packet_header_t);
 	printf("bytes per data packet:%u\n", cb_transfer);
 	size_t cbRead = 0;
 	uint8_t transfer_buf[512];
@@ -392,7 +395,7 @@ void upload(std::vector<std::string> cmd_line_parts) {
 	while (!feof(fp)) {
 		do {
 			// see if the other side has sent us anything
-			int cb = rawhid_recv(0, status_buf, 512, 0);
+			int cb = rawhid_recv(g_rawhid_index, status_buf, 512, 0);
 			if (cb < 0) {
 				printf("*** Timeout ***\n");
 				break;
@@ -456,7 +459,7 @@ void download(std::vector<std::string> cmd_line_parts) {
 	uint8_t status_buf[512];
 	RawHID_packet_t* packet = (RawHID_packet_t*)status_buf;
 	RawHID_status_packet_data_t* status_packet = (RawHID_status_packet_data_t*)packet->data;
-	int cb = rawhid_recv(0, status_buf, 512, 1000);
+	int cb = rawhid_recv(g_rawhid_index, status_buf, 512, 1000);
 	if ((cb <= 0) || (packet->type != CMD_RESPONSE) || (status_packet->status != 0)) {
 		printf("download failed - no or improper response from remote\n");
 		return;
@@ -468,7 +471,7 @@ void download(std::vector<std::string> cmd_line_parts) {
 	high_resolution_clock::time_point start_time = high_resolution_clock::now();
 	uint32_t total_bytes_transfered = 0;
 	uint32_t report_count = 0;
-	uint16_t cb_transfer = rawhid_rx_tx_size - sizeof(RawHID_packet_header_t);
+	uint16_t cb_transfer = g_rawhid_rx_tx_size - sizeof(RawHID_packet_header_t);
 #ifdef OS_LINUX
 	fp = fopen(local_filename, "wb");
 	if (fp == NULL) {
@@ -487,7 +490,7 @@ void download(std::vector<std::string> cmd_line_parts) {
 	RawHID_progress_packet_data_t progress_data = { FILE_IO_SIZE };
 	uint8_t dot_count = 0;
 	for (;;) {
-		int cb = rawhid_recv(0, status_buf, 512, 5000);
+		int cb = rawhid_recv(g_rawhid_index, status_buf, 512, 5000);
 		if (cb <= 0) {
 			printf("failed timeout\n");
 			fclose(fp);

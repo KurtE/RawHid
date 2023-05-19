@@ -144,10 +144,12 @@
   <ItemGroup>
     <ClCompile Include="..\..\..\hid_WINDOWS.c" />
     <ClCompile Include="FileTransferTest.cpp" />
+    <ClCompile Include="seremu.cpp" />
     <ClCompile Include="TransferFunctions.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\hid.h" />
+    <ClInclude Include="seremu.h" />
     <ClInclude Include="TransferFunctions.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
     </ClInclude>

@@ -7,6 +7,7 @@
 #include <sstream>
 #include <vector>
 #include <thread>
+
 #ifndef OS_LINUX
 #include <Windows.h>
 #endif
@@ -20,6 +21,7 @@ using namespace std;
 #endif
 
 #include "hid.h"
+#include "seremu.h"
 
 #define MAX_PACKET_SIZE 512
 
@@ -37,6 +39,7 @@ extern int send_status_packet(int32_t status, uint32_t size, uint32_t modifyDate
 extern void setup();
 extern void loop();
 extern void show_command_help();
+extern bool scan_for_rawhid_device();
 
 //=============================================================================
 // main
@@ -44,7 +47,8 @@ extern void show_command_help();
 int main()
 {
     // quick and dirty to work like Arduino
-    setup();
+    scan_for_rawhid_device();
+    show_command_help();
 
     for (;;) {
         loop();
@@ -57,13 +61,18 @@ int main()
 //=============================================================================
 //DWORD WINAPI clearRAWHidMsgs(__in LPVOID lpParameter) {
 void clearRAWHidMsgs() {
+    bool seremu_ouputs_active = false;
     while (g_clear_rawhid_messages) {
         uint8_t status_buf[512];
         RawHID_packet_t* packet = (RawHID_packet_t*)status_buf;
         RawHID_status_packet_data_t* status_packet = (RawHID_status_packet_data_t*)packet->data;
-        int cb = rawhid_recv(0, status_buf, 512, 50);
+        int cb = rawhid_recv(g_rawhid_index, status_buf, 512, 50);
         if (cb > 0) {
-            printf("<<< %d, %u >>> ", packet->type, packet->size);
+            if (seremu_ouputs_active) {
+                puts("]<<<< <SEREMU >>>>\n");
+                seremu_ouputs_active = false;
+            }
+            printf("(%d, %u) ", packet->type, packet->size);
             switch (packet->type) {
             case CMD_DATA: printf("DATA\n"); break;
             case CMD_DIR: printf("DIR\n"); break;
@@ -81,33 +90,21 @@ void clearRAWHidMsgs() {
             printf(": ");
         }
         else if (cb < 0) break;
+
+        // Check for Seremu messages as well
+        if (seremu_available()) {
+            if (!seremu_ouputs_active) {
+                puts("<<<SEREMU >>>> [\n");
+                seremu_ouputs_active = true;
+            }
+            seremu_print_pending_data();
+        }
     }
+    if (seremu_ouputs_active) puts("]<<<< <SEREMU >>>>\n");
     printf(">>> Thread Exit <<<\n");
 }
 
 
-//=============================================================================
-// Setup
-//=============================================================================
-
-void setup() {
-    int r;
-
-    // C-based example is 16C0:0480:FFAB:0200
-    r = rawhid_open(1, 0x16C0, 0x0480, 0xFFAB, 0x0200);
-    if (r <= 0) {
-        // Arduino-based example is 16C0:0486:FFAB:0200
-        r = rawhid_open(1, 0x16C0, 0x0486, 0xFFAB, 0x0200);
-        if (r <= 0) {
-            printf("no rawhid device found\n");
-        }
-    }
-    printf("found rawhid device\n");
-    rawhid_rx_tx_size = rawhid_txSize(0);
-    printf("packet size:%u\n", rawhid_rx_tx_size);
-
-    show_command_help();
-}
 
 //=============================================================================
 // loop
@@ -163,7 +160,6 @@ void loop() {
     if (thread_cleanup_msgs.joinable()) {
         thread_cleanup_msgs.join(); 
     }
-    for (auto i : cmd_line_parts) cout << i << endl;
 
     if ((cmd_line_parts[0] == "dir") || (cmd_line_parts[0] == "ls")) {
         remote_dir(cmd_line_parts);
@@ -197,26 +193,59 @@ void loop() {
         resetRAWHID();
     }
     else if (cmd_line_parts[0] == "scan") {
-        int r;
-
-        // C-based example is 16C0:0480:FFAB:0200
-        r = rawhid_open(1, 0x16C0, 0x0480, 0xFFAB, 0x0200);
-        if (r <= 0) {
-            // Arduino-based example is 16C0:0486:FFAB:0200
-            r = rawhid_open(1, 0x16C0, 0x0486, 0xFFAB, 0x0200);
-            if (r <= 0) {
-                printf("no rawhid device found\n");
-            }
-        }
-        printf("found rawhid device\n");
-        rawhid_rx_tx_size = rawhid_txSize(0);
-        printf("packet size:%u\n", rawhid_rx_tx_size);
+        scan_for_rawhid_device();
     }
 
     else {
         show_command_help();
     }
 }
+
+//=============================================================================
+// Scan for rawhid device - check also for SEREMU
+//=============================================================================
+bool scan_for_rawhid_device() {
+    int r;
+
+    // C-based example is 16C0:0480:FFAB:0200
+    //r = rawhid_open(1, 0x16C0, 0x0480, 0xFFAB, 0x0200);
+    // This one is setup for Teensy based one built as rawhid
+    //if (r <= 0) {
+    // Arduino-based example is 16C0:0486:FFAB:0200
+    //r = rawhid_open(1, 0x16C0, 0x0486, 0xFFAB, 0x0200);
+    r = rawhid_open(2, 0x16C0, 0x0486, -1, -1);
+    if (r <= 0) {
+        printf("no rawhid device found\n");
+        return false;
+    }
+    //}
+    printf("found rawhid %d devices\n", r);
+    g_rawhid_index = -1;
+    seremu_end(); // make sure we are not running one now. 
+    for (int i = 0; i < r; i++) {
+        printf("\t(%x, %x):", rawhid_usage_page(i), rawhid_usage(i));
+        if ((rawhid_usage_page(i) == 0xFFAB) && (rawhid_usage(i) == 0x0200)) {
+            // found the rawhid one
+            g_rawhid_index = i;
+                g_rawhid_rx_tx_size = rawhid_txSize(i);
+                printf("Rawhid index %d packet size:%u\n", i, g_rawhid_rx_tx_size);
+        }
+        else if ((rawhid_usage_page(i) == 0xffc9) && (rawhid_usage(i) == 0x4)) {
+            // SEREMU
+            g_rawhid_sereum_index = i;  //which rawhid index to use
+            uint16_t g_seremu_rx_size = rawhid_rxSize(i);
+            printf("SEREMU index % d packet size : % u\n", i, g_seremu_rx_size);
+            seremu_begin(i);
+        }
+        else {
+            printf("???\n");
+        }
+    }
+
+    return true;
+
+}
+
 
 //=============================================================================
 // Show the user some information about commands

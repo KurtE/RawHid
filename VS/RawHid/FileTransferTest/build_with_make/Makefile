@@ -34,7 +34,7 @@ CFLAGS = -Wall -O2 -DOS_$(OS)
 LIBS = -lhid -lsetupapi
 endif
 
-OBJS = $(PROG).o hid.o TransferFunctions.o
+OBJS = $(PROG).o hid.o TransferFunctions.o seremu.o
 
 
 all: $(TARGET)
@@ -55,10 +55,13 @@ $(PROG).dmg: $(PROG)
 hid.o: ../../../../hid_$(OS).c ../../../../hid.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
- FileTransferTest.o: ../FileTransferTest.cpp ../../../../hid.h ../TransferFunctions.h
+ FileTransferTest.o: ../FileTransferTest.cpp ../../../../hid.h ../TransferFunctions.h ../seremu.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
  TransferFunctions.o: ../TransferFunctions.cpp ../../../../hid.h ../TransferFunctions.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+ seremu.o: ../seremu.cpp ../../../../hid.h ../seremu.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:

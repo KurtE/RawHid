@@ -6,6 +6,10 @@
  *  rawhid_recv - receive a packet
  *  rawhid_send - send a packet
  *  rawhid_close - close a device
+ *  rawhid_rxSize - Size of max rx packets typically 64
+ *  rawhid_txSize - tx packets
+ *  rawhid_usage_page - return the usage page of the device
+ *  rawhid_usage - return the usage. 
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -95,6 +99,8 @@ struct hid_struct {
 	uint8_t rx_bmAttributes;
 	int tx_size;
 	uint8_t tx_bmAttributes;
+	int usage_page;
+	int usage;
 	struct hid_struct *prev;
 	struct hid_struct *next;
 };
@@ -192,6 +198,27 @@ int rawhid_txAttr(int num)
 	if (!hid || !hid->open) return -1;
 	return hid->tx_bmAttributes;
 }
+
+int rawhid_usage_page(int num)
+{
+	hid_t* hid;
+
+	hid = get_hid(num);
+	if (!hid || !hid->open) return -1;
+	return hid->usage_page;
+}
+
+int rawhid_usage(int num)
+{
+	hid_t* hid;
+
+	hid = get_hid(num);
+	if (!hid || !hid->open) return -1;
+	return hid->usage;
+}
+
+
+
 
 //  rawhid_open - open 1 or more devices
 //
@@ -320,6 +347,8 @@ int rawhid_open(int max, int vid, int pid, int usage_page, int usage)
 				hid->rx_bmAttributes = rx_bmAttributes;
 				hid->tx_size = tx_size;
 				hid->tx_bmAttributes = tx_bmAttributes;
+				hid->usage_page = parsed_usage_page;
+				hid->usage = parsed_usage;
 				add_hid(hid);
 				claimed++;
 				count++;

@@ -40,7 +40,7 @@ enum {
 
 
 //uint8_t buffer[512];  // most of the time will be 64 bytes, but if we support 512...
-extern uint16_t rawhid_rx_tx_size;       // later will change ... hopefully
+extern uint16_t g_rawhid_rx_tx_size;       // later will change ... hopefully
 
 #define FILE_IO_SIZE 4096
 #define FILE_BUFFER_SIZE (FILE_IO_SIZE * 8)
@@ -89,7 +89,9 @@ typedef struct {
 } RawHid_file_info_t;
 
 
-extern uint16_t rawhid_rx_tx_size;
+extern uint16_t g_rawhid_rx_tx_size;
+extern int g_rawhid_index;  //which rawhid index to use
+extern int g_rawhid_sereum_index;  //which rawhid index to use
 
 extern void remote_dir(std::vector<std::string> cmd_line_parts);
 extern void change_directory(std::vector<std::string> cmd_line_parts);
@@ -101,5 +103,4 @@ extern void upload(std::vector<std::string> cmd_line_parts);
 extern void download(std::vector<std::string> cmd_line_parts);
 extern void breakTime(uint32_t time, DateTimeFields& tm);
 extern void resetRAWHID();
-
 

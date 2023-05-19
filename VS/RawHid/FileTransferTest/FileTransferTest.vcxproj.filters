@@ -24,12 +24,18 @@
     <ClCompile Include="TransferFunctions.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="seremu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\hid.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\WinUSB_rawhid\TransferFunctions.h">
+    <ClInclude Include="TransferFunctions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="seremu.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
